@@ -1,0 +1,2 @@
+-- Intentionally not reversible. Normalizing map dimensions may discard or add
+-- placeholder tile data depending on the previous stored shape.

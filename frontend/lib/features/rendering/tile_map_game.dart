@@ -1,0 +1,996 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:flame/components.dart';
+import 'package:flame/events.dart';
+import 'package:flame/game.dart';
+import 'package:flutter/painting.dart';
+
+import '../entities/domain/world_entity.dart';
+import '../map/domain/tile_map.dart';
+import '../player/domain/player_state.dart';
+import 'entity_visuals.dart';
+
+class TileMapGame extends FlameGame with PanDetector {
+  TileMapGame({TileRenderConfig renderConfig = const TileRenderConfig()})
+    : _renderConfig = renderConfig;
+
+  final TileRenderConfig _renderConfig;
+  TileMap? _pendingMap;
+  List<WorldEntity> _pendingEntities = const [];
+  PlayerState? _pendingPlayer;
+  TileMapRenderer? _renderer;
+
+  @override
+  Color backgroundColor() => const Color(0xFF10241D);
+
+  @override
+  Future<void> onLoad() async {
+    final tileset = await images.load('tiles/tile_map.png');
+    final walkIcon = await images.load('sprites/walk_icon.png');
+    final playerSprite = await images.load('sprites/lumberjack.png');
+    final entityImages = {
+      'animated_autumn_tree': await images.load(
+        'entities/animated_autumn_tree.png',
+      ),
+    };
+    _renderer = TileMapRenderer(
+      tileset: tileset,
+      walkIcon: walkIcon,
+      playerSprite: playerSprite,
+      entityImages: entityImages,
+      renderConfig: _renderConfig,
+    );
+    await add(_renderer!);
+
+    final pending = _pendingMap;
+    if (pending != null) {
+      _renderer!.currentMap = pending;
+    }
+    _renderer!.entities = _pendingEntities;
+    _renderer!.player = _pendingPlayer;
+  }
+
+  void setTileMap(TileMap tileMap) {
+    _pendingMap = tileMap;
+    _renderer?.currentMap = tileMap;
+  }
+
+  void setEntities(List<WorldEntity> entities) {
+    _pendingEntities = List.unmodifiable(entities);
+    _renderer?.entities = _pendingEntities;
+  }
+
+  void setPlayer(PlayerState player) {
+    _pendingPlayer = player;
+    _renderer?.player = player;
+  }
+
+  String? holdLabelAt(Offset localPosition) {
+    return _renderer?.holdLabelAt(Vector2(localPosition.dx, localPosition.dy));
+  }
+
+  math.Point<int>? tileAtLocalPosition(Offset localPosition) {
+    return _renderer?.tileAt(Vector2(localPosition.dx, localPosition.dy));
+  }
+
+  bool isWalkableTileAtLocalPosition(Offset localPosition) {
+    return _renderer?.isWalkableTileAt(
+          Vector2(localPosition.dx, localPosition.dy),
+        ) ??
+        false;
+  }
+
+  EntityInteractionTarget? entityInteractionTargetAtLocalPosition(
+    Offset localPosition,
+  ) {
+    return _renderer?.entityInteractionTargetAt(
+      Vector2(localPosition.dx, localPosition.dy),
+    );
+  }
+
+  void showWalkIconAt(math.Point<int> tile) {
+    _renderer?.showWalkIconAt(tile);
+  }
+
+  void facePlayer(PlayerFacing facing) {
+    _renderer?.facePlayer(facing);
+  }
+
+  @override
+  void onPanUpdate(DragUpdateInfo info) {
+    _renderer?.panBy(info.delta.global);
+  }
+}
+
+class TileRenderConfig {
+  const TileRenderConfig({this.usableColumns = 32, this.usableRows = 16});
+
+  final int usableColumns;
+  final int usableRows;
+
+  double tileSizeFor(Vector2 canvasSize) {
+    return math.min(canvasSize.x / usableColumns, canvasSize.y / usableRows);
+  }
+}
+
+class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
+  TileMapRenderer({
+    required Image tileset,
+    required Image walkIcon,
+    required Image playerSprite,
+    required Map<String, Image> entityImages,
+    required TileRenderConfig renderConfig,
+  }) : _tileset = tileset,
+       _walkIcon = walkIcon,
+       _playerSprite = playerSprite,
+       _entityImages = entityImages,
+       _renderConfig = renderConfig;
+
+  final Image _tileset;
+  final Image _walkIcon;
+  final Image _playerSprite;
+  final Map<String, Image> _entityImages;
+  final TileRenderConfig _renderConfig;
+  TileMap? tileMap;
+  List<WorldEntity> entities = const [];
+  final List<_WalkIconEffect> _walkIconEffects = [];
+  PlayerState? _player;
+  _PlayerVisualMotion? _playerVisualMotion;
+  _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
+  double _panX = 0;
+  double _panY = 0;
+  double _elapsedSeconds = 0;
+  bool _needsCentering = true;
+  Vector2? _lastGameSize;
+
+  PlayerState? get player => _player;
+
+  set player(PlayerState? value) {
+    final currentPosition = _playerPosition();
+    _player = value;
+    _playerVisualMotion = _visualMotionFrom(value, currentPosition);
+  }
+
+  set currentMap(TileMap? value) {
+    if (!identical(tileMap, value)) {
+      tileMap = value;
+      _needsCentering = true;
+    }
+  }
+
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    final previousSize = _lastGameSize;
+    _lastGameSize = size.clone();
+
+    if (previousSize == null) {
+      _needsCentering = true;
+      return;
+    }
+
+    final sizeChanged = previousSize.x != size.x || previousSize.y != size.y;
+    if (!sizeChanged) {
+      return;
+    }
+
+    final map = tileMap;
+    if (map == null) {
+      _needsCentering = true;
+      return;
+    }
+
+    final tileSize = _renderConfig.tileSizeFor(size);
+    _panX = _clampPanX(_panX, map, tileSize);
+    _panY = _clampPanY(_panY, map, tileSize);
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _elapsedSeconds += dt;
+    _walkIconEffects.removeWhere(
+      (effect) => effect.isComplete(_elapsedSeconds),
+    );
+  }
+
+  void panBy(Vector2 delta) {
+    if (player != null) {
+      return;
+    }
+
+    final map = tileMap;
+    if (map == null || game.size.x <= 0 || game.size.y <= 0) {
+      return;
+    }
+    final tileSize = _renderConfig.tileSizeFor(game.size);
+    _panX = _clampPanX(_panX - delta.x, map, tileSize);
+    _panY = _clampPanY(_panY - delta.y, map, tileSize);
+    _needsCentering = false;
+  }
+
+  String? holdLabelAt(Vector2 screenPosition) {
+    final entity = entityAt(screenPosition);
+    if (entity != null) {
+      if (entity.name.isNotEmpty) {
+        return entity.name;
+      }
+      return entity.resourceKey.isEmpty ? 'Entity' : entity.resourceKey;
+    }
+
+    final tile = tileAt(screenPosition);
+    if (tile == null) {
+      return null;
+    }
+    return 'Walk here';
+  }
+
+  WorldEntity? entityAt(Vector2 screenPosition) {
+    final mapPosition = _mapPositionAt(screenPosition);
+    if (mapPosition == null) {
+      return null;
+    }
+
+    for (final entity in entities.reversed) {
+      final bounds = _entityHitBounds(entity);
+      if (bounds.contains(mapPosition)) {
+        return entity;
+      }
+    }
+    return null;
+  }
+
+  math.Point<int>? tileAt(Vector2 screenPosition) {
+    final map = tileMap;
+    if (map == null || game.size.x <= 0 || game.size.y <= 0) {
+      return null;
+    }
+
+    final tileSize = _renderConfig.tileSizeFor(game.size);
+    final offset = _mapOffset(map, tileSize);
+    final col = ((screenPosition.x - offset.dx) / tileSize).floor();
+    final row = ((screenPosition.y - offset.dy) / tileSize).floor();
+    if (col < 0 || row < 0 || col >= map.width || row >= map.height) {
+      return null;
+    }
+    return math.Point(col, row);
+  }
+
+  Offset? _mapPositionAt(Vector2 screenPosition) {
+    final map = tileMap;
+    if (map == null || game.size.x <= 0 || game.size.y <= 0) {
+      return null;
+    }
+
+    final tileSize = _renderConfig.tileSizeFor(game.size);
+    final offset = _mapOffset(map, tileSize);
+    final x = (screenPosition.x - offset.dx) / tileSize;
+    final y = (screenPosition.y - offset.dy) / tileSize;
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) {
+      return null;
+    }
+    return Offset(x, y);
+  }
+
+  Rect _entityHitBounds(WorldEntity entity) {
+    final visual = entityVisualDefinitions[entity.resourceKey];
+    if (visual != null) {
+      return Rect.fromLTWH(
+        entity.x + 0.5 - visual.anchorXTiles,
+        entity.y + 1 - visual.anchorYTiles,
+        visual.drawWidthTiles,
+        visual.drawHeightTiles,
+      );
+    }
+
+    return Rect.fromLTWH(
+      entity.x.toDouble(),
+      entity.y.toDouble(),
+      math.max(1, entity.width).toDouble(),
+      math.max(1, entity.height).toDouble(),
+    );
+  }
+
+  bool isWalkableTileAt(Vector2 screenPosition) {
+    final map = tileMap;
+    final tile = tileAt(screenPosition);
+    if (map == null || tile == null) {
+      return false;
+    }
+    if (map.tileAt(tile.x, tile.y) <= 0) {
+      return false;
+    }
+    return !_isTileBlocked(tile);
+  }
+
+  EntityInteractionTarget? entityInteractionTargetAt(Vector2 screenPosition) {
+    final entity = entityAt(screenPosition);
+    if (entity == null) {
+      return null;
+    }
+
+    final playerPosition = _playerPosition();
+    final candidates = _interactionCandidates(entity);
+    if (candidates.isEmpty) {
+      return null;
+    }
+
+    candidates.sort((a, b) {
+      final player = playerPosition;
+      if (player == null) {
+        return 0;
+      }
+      final aDistance = _tileDistanceSquared(a.tile, player);
+      final bDistance = _tileDistanceSquared(b.tile, player);
+      return aDistance.compareTo(bDistance);
+    });
+
+    return candidates.first;
+  }
+
+  void facePlayer(PlayerFacing facing) {
+    final direction = _PlayerDirection.fromFacing(facing);
+    _lastPlayerDirection = direction;
+    final motion = _playerVisualMotion;
+    if (motion != null) {
+      _playerVisualMotion = motion.copyWith(finalDirection: direction);
+    }
+  }
+
+  void showWalkIconAt(math.Point<int> tile) {
+    _walkIconEffects.add(
+      _WalkIconEffect(x: tile.x, y: tile.y, startedAtSeconds: _elapsedSeconds),
+    );
+  }
+
+  List<EntityInteractionTarget> _interactionCandidates(WorldEntity entity) {
+    final bounds = _entityCollisionBounds(entity);
+    final candidates = <EntityInteractionTarget>[];
+
+    for (var y = bounds.top.toInt(); y < bounds.bottom.toInt(); y++) {
+      candidates.add(
+        EntityInteractionTarget(
+          tile: math.Point(bounds.left.toInt() - 1, y),
+          facing: PlayerFacing.right,
+        ),
+      );
+      candidates.add(
+        EntityInteractionTarget(
+          tile: math.Point(bounds.right.toInt(), y),
+          facing: PlayerFacing.left,
+        ),
+      );
+    }
+
+    for (var x = bounds.left.toInt(); x < bounds.right.toInt(); x++) {
+      candidates.add(
+        EntityInteractionTarget(
+          tile: math.Point(x, bounds.top.toInt() - 1),
+          facing: PlayerFacing.front,
+        ),
+      );
+      candidates.add(
+        EntityInteractionTarget(
+          tile: math.Point(x, bounds.bottom.toInt()),
+          facing: PlayerFacing.back,
+        ),
+      );
+    }
+
+    return candidates
+        .where((candidate) => _isTileWalkable(candidate.tile))
+        .toList();
+  }
+
+  double _tileDistanceSquared(math.Point<int> tile, Offset position) {
+    final dx = tile.x + 0.5 - position.dx;
+    final dy = tile.y + 0.5 - position.dy;
+    return dx * dx + dy * dy;
+  }
+
+  bool _isTileWalkable(math.Point<int> tile) {
+    final map = tileMap;
+    if (map == null) {
+      return false;
+    }
+    if (tile.x < 0 ||
+        tile.y < 0 ||
+        tile.x >= map.width ||
+        tile.y >= map.height) {
+      return false;
+    }
+    if (map.tileAt(tile.x, tile.y) <= 0) {
+      return false;
+    }
+    return !_isTileBlocked(tile);
+  }
+
+  bool _isTileBlocked(math.Point<int> tile) {
+    return entities.any(
+      (entity) => _entityCollisionBounds(
+        entity,
+      ).contains(Offset(tile.x + 0.5, tile.y + 0.5)),
+    );
+  }
+
+  Rect _entityCollisionBounds(WorldEntity entity) {
+    return Rect.fromLTWH(
+      entity.x.toDouble(),
+      entity.y.toDouble(),
+      math.max(1, entity.width).toDouble(),
+      math.max(1, entity.height).toDouble(),
+    );
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final map = tileMap;
+    if (map == null) {
+      _drawLoading(canvas);
+      return;
+    }
+
+    if (game.size.x <= 0 || game.size.y <= 0) {
+      return;
+    }
+
+    final sourceTileSize = map.tileSize <= 0 ? 32 : map.tileSize;
+    final drawTileSize = _renderConfig.tileSizeFor(game.size);
+    final playerPose = _playerPose();
+    final playerPosition = playerPose?.position;
+    if (playerPosition != null) {
+      _centerOnPlayer(map, drawTileSize, playerPosition);
+      _needsCentering = false;
+    } else if (_needsCentering) {
+      _centerOnUsableArea(map, drawTileSize);
+      _needsCentering = false;
+    }
+    _panX = _clampPanX(_panX, map, drawTileSize);
+    _panY = _clampPanY(_panY, map, drawTileSize);
+
+    final offset = _mapOffset(map, drawTileSize);
+
+    final paint = Paint()..filterQuality = FilterQuality.none;
+    final entityBorderPaint =
+        Paint()
+          ..color = const Color(0xFFFFD54F)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2;
+    final sourceColumns = math.max(1, _tileset.width ~/ sourceTileSize);
+
+    for (var row = 0; row < map.height; row++) {
+      for (var col = 0; col < map.width; col++) {
+        final tileId = map.tileAt(col, row);
+        if (tileId <= 0) {
+          continue;
+        }
+        final sourceIndex = tileId - 1;
+        final source = Rect.fromLTWH(
+          ((sourceIndex % sourceColumns) * sourceTileSize).toDouble(),
+          ((sourceIndex ~/ sourceColumns) * sourceTileSize).toDouble(),
+          sourceTileSize.toDouble(),
+          sourceTileSize.toDouble(),
+        );
+        final destination = Rect.fromLTWH(
+          offset.dx + col * drawTileSize,
+          offset.dy + row * drawTileSize,
+          drawTileSize,
+          drawTileSize,
+        );
+
+        canvas.drawImageRect(_tileset, source, destination, paint);
+      }
+    }
+
+    for (final entity in entities) {
+      _drawEntity(
+        canvas: canvas,
+        entity: entity,
+        layer: _EntityRenderLayer.background,
+        offset: offset,
+        drawTileSize: drawTileSize,
+        sourceTileSize: sourceTileSize,
+        sourceColumns: sourceColumns,
+        paint: paint,
+        borderPaint: entityBorderPaint,
+      );
+    }
+
+    if (playerPose != null) {
+      _drawPlayer(
+        canvas: canvas,
+        pose: playerPose,
+        offset: offset,
+        drawTileSize: drawTileSize,
+        paint: paint,
+      );
+    }
+
+    for (final entity in entities) {
+      _drawEntity(
+        canvas: canvas,
+        entity: entity,
+        layer: _EntityRenderLayer.foreground,
+        offset: offset,
+        drawTileSize: drawTileSize,
+        sourceTileSize: sourceTileSize,
+        sourceColumns: sourceColumns,
+        paint: paint,
+        borderPaint: entityBorderPaint,
+      );
+    }
+
+    for (final effect in _walkIconEffects) {
+      _drawWalkIconEffect(
+        canvas: canvas,
+        effect: effect,
+        offset: offset,
+        drawTileSize: drawTileSize,
+        paint: paint,
+      );
+    }
+  }
+
+  void _drawPlayer({
+    required Canvas canvas,
+    required _PlayerPose pose,
+    required Offset offset,
+    required double drawTileSize,
+    required Paint paint,
+  }) {
+    const frameWidth = 22.0;
+    const frameHeight = 22.0;
+    const rowStride = 24.5;
+    const frameCount = 9;
+    final frame =
+        pose.isMoving ? ((_elapsedSeconds * 10).floor() % frameCount) : 0;
+    final source = Rect.fromLTWH(
+      frame * frameWidth,
+      pose.direction.row * rowStride,
+      frameWidth,
+      frameHeight,
+    );
+
+    final drawWidth = drawTileSize * 1.6;
+    final drawHeight = drawWidth * frameHeight / frameWidth;
+    final footX = offset.dx + (pose.position.dx + 0.5) * drawTileSize;
+    final footY = offset.dy + (pose.position.dy + 1) * drawTileSize;
+    final destination = Rect.fromLTWH(
+      footX - drawWidth / 2,
+      footY - drawHeight,
+      drawWidth,
+      drawHeight,
+    );
+    canvas.drawImageRect(_playerSprite, source, destination, paint);
+  }
+
+  void _drawWalkIconEffect({
+    required Canvas canvas,
+    required _WalkIconEffect effect,
+    required Offset offset,
+    required double drawTileSize,
+    required Paint paint,
+  }) {
+    final frame = effect.frameAt(_elapsedSeconds);
+    final source = Rect.fromLTWH((frame * 32).toDouble(), 0, 32, 32);
+    final destination = Rect.fromLTWH(
+      offset.dx + effect.x * drawTileSize,
+      offset.dy + effect.y * drawTileSize,
+      drawTileSize,
+      drawTileSize,
+    );
+    canvas.drawImageRect(_walkIcon, source, destination, paint);
+  }
+
+  void _drawEntity({
+    required Canvas canvas,
+    required WorldEntity entity,
+    required _EntityRenderLayer layer,
+    required Offset offset,
+    required double drawTileSize,
+    required int sourceTileSize,
+    required int sourceColumns,
+    required Paint paint,
+    required Paint borderPaint,
+  }) {
+    final visual = entityVisualDefinitions[entity.resourceKey];
+    if (visual != null) {
+      final image = _entityImages[visual.imageKey];
+      if (image == null) {
+        return;
+      }
+
+      final animation = visual.animationFor(entity.state);
+      final frame = animation.frameAt(
+        Duration(milliseconds: (_elapsedSeconds * 1000).floor()),
+      );
+      final destinationBounds = Rect.fromLTWH(
+        offset.dx + (entity.x + 0.5 - visual.anchorXTiles) * drawTileSize,
+        offset.dy + (entity.y + 1 - visual.anchorYTiles) * drawTileSize,
+        visual.drawWidthTiles * drawTileSize,
+        visual.drawHeightTiles * drawTileSize,
+      );
+      _drawEntityVisualLayer(
+        canvas: canvas,
+        image: image,
+        source: frame.source,
+        destination: destinationBounds,
+        splitY: visual.foregroundSplitY,
+        layer: layer,
+        paint: paint,
+      );
+      return;
+    }
+
+    if (layer != _EntityRenderLayer.foreground) {
+      return;
+    }
+
+    final spriteGid = entity.spriteGid;
+    if (spriteGid <= 0) {
+      return;
+    }
+    final sourceIndex = spriteGid - 1;
+    final source = Rect.fromLTWH(
+      ((sourceIndex % sourceColumns) * sourceTileSize).toDouble(),
+      ((sourceIndex ~/ sourceColumns) * sourceTileSize).toDouble(),
+      sourceTileSize.toDouble(),
+      sourceTileSize.toDouble(),
+    );
+    final destination = Rect.fromLTWH(
+      offset.dx + entity.x * drawTileSize,
+      offset.dy + entity.y * drawTileSize,
+      math.max(1, entity.width) * drawTileSize,
+      math.max(1, entity.height) * drawTileSize,
+    );
+    canvas.drawImageRect(_tileset, source, destination, paint);
+    canvas.drawRect(destination.deflate(1), borderPaint);
+  }
+
+  void _drawEntityVisualLayer({
+    required Canvas canvas,
+    required Image image,
+    required Rect source,
+    required Rect destination,
+    required double? splitY,
+    required _EntityRenderLayer layer,
+    required Paint paint,
+  }) {
+    if (splitY == null) {
+      if (layer == _EntityRenderLayer.foreground) {
+        canvas.drawImageRect(image, source, destination, paint);
+      }
+      return;
+    }
+
+    final clampedSplit = splitY.clamp(0, source.height).toDouble();
+    if (layer == _EntityRenderLayer.background) {
+      if (clampedSplit >= source.height) {
+        return;
+      }
+      final sourcePart = Rect.fromLTWH(
+        source.left,
+        source.top + clampedSplit,
+        source.width,
+        source.height - clampedSplit,
+      );
+      final destinationPart = Rect.fromLTWH(
+        destination.left,
+        destination.top + destination.height * (clampedSplit / source.height),
+        destination.width,
+        destination.height * ((source.height - clampedSplit) / source.height),
+      );
+      canvas.drawImageRect(image, sourcePart, destinationPart, paint);
+      return;
+    }
+
+    if (clampedSplit <= 0) {
+      return;
+    }
+    final sourcePart = Rect.fromLTWH(
+      source.left,
+      source.top,
+      source.width,
+      clampedSplit,
+    );
+    final destinationPart = Rect.fromLTWH(
+      destination.left,
+      destination.top,
+      destination.width,
+      destination.height * (clampedSplit / source.height),
+    );
+    canvas.drawImageRect(image, sourcePart, destinationPart, paint);
+  }
+
+  Offset? _playerPosition() {
+    return _playerPose()?.position;
+  }
+
+  _PlayerPose? _playerPose() {
+    final visualMotion = _playerVisualMotion;
+    if (visualMotion != null) {
+      return _poseOnPath(
+        path: visualMotion.path,
+        distance:
+            (_elapsedSeconds - visualMotion.startedAtSeconds) *
+            visualMotion.speedTilesPerSecond,
+        finalDirection: visualMotion.finalDirection,
+      );
+    }
+
+    return _serverPlayerPose(DateTime.now().toUtc());
+  }
+
+  _PlayerPose? _serverPlayerPose(DateTime now) {
+    final current = player;
+    if (current == null) {
+      return null;
+    }
+
+    final movement = current.movement;
+    if (movement == null || movement.path.isEmpty) {
+      return _PlayerPose(
+        position: Offset(current.x.toDouble(), current.y.toDouble()),
+        direction: _lastPlayerDirection,
+        isMoving: false,
+      );
+    }
+    if (!now.isBefore(movement.arrivesAt)) {
+      return _PlayerPose(
+        position: Offset(
+          movement.targetX.toDouble(),
+          movement.targetY.toDouble(),
+        ),
+        direction: _lastPlayerDirection,
+        isMoving: false,
+      );
+    }
+    if (!now.isAfter(movement.startedAt)) {
+      final first = movement.path.first;
+      return _PlayerPose(
+        position: Offset(first.x.toDouble(), first.y.toDouble()),
+        direction: _lastPlayerDirection,
+        isMoving: true,
+      );
+    }
+
+    final elapsed = now.difference(movement.startedAt).inMilliseconds / 1000;
+    return _poseOnPath(
+      path:
+          movement.path
+              .map((point) => Offset(point.x.toDouble(), point.y.toDouble()))
+              .toList(),
+      distance: elapsed * movement.speedTilesPerSecond,
+    );
+  }
+
+  _PlayerPose _poseOnPath({
+    required List<Offset> path,
+    required double distance,
+    _PlayerDirection? finalDirection,
+  }) {
+    var remainingDistance = math.max(0, distance);
+
+    for (var index = 0; index < path.length - 1; index++) {
+      final from = path[index];
+      final to = path[index + 1];
+      final segmentDistance = (to - from).distance;
+      if (remainingDistance > segmentDistance) {
+        remainingDistance -= segmentDistance;
+        continue;
+      }
+
+      final direction = _directionForDelta(to - from);
+      _lastPlayerDirection = direction;
+      final localProgress =
+          segmentDistance == 0 ? 1.0 : remainingDistance / segmentDistance;
+      return _PlayerPose(
+        position: Offset.lerp(from, to, localProgress) ?? to,
+        direction: direction,
+        isMoving: true,
+      );
+    }
+
+    final direction = finalDirection ?? _lastPlayerDirection;
+    _lastPlayerDirection = direction;
+    return _PlayerPose(
+      position: path.last,
+      direction: direction,
+      isMoving: false,
+    );
+  }
+
+  _PlayerDirection _directionForDelta(Offset delta) {
+    if (delta.dx.abs() >= delta.dy.abs() && delta.dx != 0) {
+      return delta.dx > 0 ? _PlayerDirection.right : _PlayerDirection.left;
+    }
+    if (delta.dy != 0) {
+      return delta.dy > 0 ? _PlayerDirection.front : _PlayerDirection.back;
+    }
+    return _lastPlayerDirection;
+  }
+
+  _PlayerVisualMotion? _visualMotionFrom(
+    PlayerState? next,
+    Offset? currentPosition,
+  ) {
+    final movement = next?.movement;
+    if (movement == null || movement.path.isEmpty || currentPosition == null) {
+      return null;
+    }
+
+    final backendPath =
+        movement.path
+            .map((point) => Offset(point.x.toDouble(), point.y.toDouble()))
+            .toList();
+    final startIndex = _nearestPathIndex(backendPath, currentPosition);
+    final path = <Offset>[
+      currentPosition,
+      ...backendPath.skip(math.min(startIndex + 1, backendPath.length - 1)),
+    ];
+
+    if (path.length == 1) {
+      path.add(backendPath.last);
+    }
+
+    return _PlayerVisualMotion(
+      path: path,
+      startedAtSeconds: _elapsedSeconds,
+      speedTilesPerSecond: movement.speedTilesPerSecond,
+    );
+  }
+
+  int _nearestPathIndex(List<Offset> path, Offset point) {
+    var nearestIndex = 0;
+    var nearestDistance = double.infinity;
+    for (var index = 0; index < path.length; index++) {
+      final distance = (path[index] - point).distanceSquared;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    }
+    return nearestIndex;
+  }
+
+  double _clampPanX(double panX, TileMap map, double tileSize) {
+    final mapWidth = map.width * tileSize;
+    final maxPanX = math.max(0, mapWidth - game.size.x);
+    return panX.clamp(0, maxPanX).toDouble();
+  }
+
+  double _clampPanY(double panY, TileMap map, double tileSize) {
+    final mapHeight = map.height * tileSize;
+    final maxPanY = math.max(0, mapHeight - game.size.y);
+    return panY.clamp(0, maxPanY).toDouble();
+  }
+
+  void _centerOnUsableArea(TileMap map, double tileSize) {
+    final mapCenterX = map.width * tileSize / 2;
+    final mapCenterY = map.height * tileSize / 2;
+    _panX = _clampPanX(mapCenterX - game.size.x / 2, map, tileSize);
+    _panY = _clampPanY(mapCenterY - game.size.y / 2, map, tileSize);
+  }
+
+  void _centerOnPlayer(TileMap map, double tileSize, Offset playerPosition) {
+    final playerCenterX = (playerPosition.dx + 0.5) * tileSize;
+    final playerCenterY = (playerPosition.dy + 0.5) * tileSize;
+    _panX = _clampPanX(playerCenterX - game.size.x / 2, map, tileSize);
+    _panY = _clampPanY(playerCenterY - game.size.y / 2, map, tileSize);
+  }
+
+  Offset _mapOffset(TileMap map, double tileSize) {
+    final mapPixelWidth = map.width * tileSize;
+    final horizontalInset = math.max(0, (game.size.x - mapPixelWidth) / 2);
+    return Offset(horizontalInset - _panX, -_panY);
+  }
+
+  void _drawLoading(Canvas canvas) {
+    final painter = TextPainter(
+      text: const TextSpan(
+        text: 'Loading map',
+        style: TextStyle(color: Color(0xFFEAF3EF), fontSize: 20),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(
+        (game.size.x - painter.width) / 2,
+        (game.size.y - painter.height) / 2,
+      ),
+    );
+  }
+}
+
+enum _PlayerDirection {
+  front(0),
+  right(1),
+  left(2),
+  back(3);
+
+  const _PlayerDirection(this.row);
+
+  final int row;
+
+  factory _PlayerDirection.fromFacing(PlayerFacing facing) {
+    return switch (facing) {
+      PlayerFacing.front => _PlayerDirection.front,
+      PlayerFacing.right => _PlayerDirection.right,
+      PlayerFacing.left => _PlayerDirection.left,
+      PlayerFacing.back => _PlayerDirection.back,
+    };
+  }
+}
+
+enum _EntityRenderLayer { background, foreground }
+
+enum PlayerFacing { front, right, left, back }
+
+class EntityInteractionTarget {
+  const EntityInteractionTarget({required this.tile, required this.facing});
+
+  final math.Point<int> tile;
+  final PlayerFacing facing;
+}
+
+class _PlayerPose {
+  const _PlayerPose({
+    required this.position,
+    required this.direction,
+    required this.isMoving,
+  });
+
+  final Offset position;
+  final _PlayerDirection direction;
+  final bool isMoving;
+}
+
+class _PlayerVisualMotion {
+  const _PlayerVisualMotion({
+    required this.path,
+    required this.startedAtSeconds,
+    required this.speedTilesPerSecond,
+    this.finalDirection,
+  });
+
+  final List<Offset> path;
+  final double startedAtSeconds;
+  final double speedTilesPerSecond;
+  final _PlayerDirection? finalDirection;
+
+  _PlayerVisualMotion copyWith({_PlayerDirection? finalDirection}) {
+    return _PlayerVisualMotion(
+      path: path,
+      startedAtSeconds: startedAtSeconds,
+      speedTilesPerSecond: speedTilesPerSecond,
+      finalDirection: finalDirection ?? this.finalDirection,
+    );
+  }
+}
+
+class _WalkIconEffect {
+  const _WalkIconEffect({
+    required this.x,
+    required this.y,
+    required this.startedAtSeconds,
+  });
+
+  static const frameCount = 5;
+  static const frameDurationSeconds = 0.08;
+
+  final int x;
+  final int y;
+  final double startedAtSeconds;
+
+  bool isComplete(double elapsedSeconds) {
+    return elapsedSeconds - startedAtSeconds >=
+        frameCount * frameDurationSeconds;
+  }
+
+  int frameAt(double elapsedSeconds) {
+    final elapsed = math.max(0, elapsedSeconds - startedAtSeconds);
+    return (elapsed ~/ frameDurationSeconds).clamp(0, frameCount - 1).toInt();
+  }
+}

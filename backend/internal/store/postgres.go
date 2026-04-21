@@ -1,0 +1,553 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"starter/backend/internal/domain"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type PostgresStores struct {
+	Users    *PostgresUserStore
+	Sessions *PostgresSessionStore
+	State    *PostgresStateStore
+	Maps     *PostgresMapStore
+	Entities *PostgresEntityStore
+	Players  *PostgresPlayerStore
+}
+
+func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
+	return PostgresStores{
+		Users:    &PostgresUserStore{pool: pool},
+		Sessions: &PostgresSessionStore{pool: pool},
+		State:    &PostgresStateStore{pool: pool},
+		Maps:     &PostgresMapStore{pool: pool},
+		Entities: &PostgresEntityStore{pool: pool},
+		Players:  &PostgresPlayerStore{pool: pool},
+	}
+}
+
+func (s PostgresStores) Interfaces() Stores {
+	return Stores{Users: s.Users, Sessions: s.Sessions, State: s.State, Maps: s.Maps, Entities: s.Entities, Players: s.Players}
+}
+
+type PostgresUserStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresUserStore) CreateGuest(ctx context.Context) (domain.User, error) {
+	user := domain.User{ID: uuid.New(), Provider: "guest", DisplayName: "Guest"}
+	err := s.pool.QueryRow(ctx, `
+		insert into users (id, provider, display_name)
+		values ($1, $2, $3)
+		returning created_at, updated_at
+	`, user.ID, user.Provider, user.DisplayName).Scan(&user.CreatedAt, &user.UpdatedAt)
+	return user, err
+}
+
+func (s *PostgresUserStore) GetByID(ctx context.Context, id uuid.UUID) (domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx, `
+		select id, provider, display_name, created_at, updated_at
+		from users
+		where id = $1
+	`, id).Scan(&user.ID, &user.Provider, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+	return user, err
+}
+
+type PostgresSessionStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresSessionStore) Create(ctx context.Context, session domain.Session) (domain.Session, error) {
+	err := s.pool.QueryRow(ctx, `
+		insert into sessions (id, user_id, refresh_hash, expires_at)
+		values ($1, $2, $3, $4)
+		returning created_at, last_used_at
+	`, session.ID, session.UserID, session.RefreshHash, session.ExpiresAt).Scan(&session.CreatedAt, &session.LastUsedAt)
+	return session, err
+}
+
+func (s *PostgresSessionStore) Get(ctx context.Context, id uuid.UUID) (domain.Session, error) {
+	var session domain.Session
+	err := s.pool.QueryRow(ctx, `
+		select id, user_id, refresh_hash, expires_at, revoked_at, created_at, last_used_at
+		from sessions
+		where id = $1
+	`, id).Scan(&session.ID, &session.UserID, &session.RefreshHash, &session.ExpiresAt, &session.RevokedAt, &session.CreatedAt, &session.LastUsedAt)
+	return session, err
+}
+
+func (s *PostgresSessionStore) UpdateRefreshHash(ctx context.Context, id uuid.UUID, refreshHash string, expiresAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		update sessions
+		set refresh_hash = $2, expires_at = $3, last_used_at = now()
+		where id = $1 and revoked_at is null
+	`, id, refreshHash, expiresAt)
+	return err
+}
+
+func (s *PostgresSessionStore) Touch(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `update sessions set last_used_at = now() where id = $1`, id)
+	return err
+}
+
+func (s *PostgresSessionStore) Revoke(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `update sessions set revoked_at = now() where id = $1 and revoked_at is null`, id)
+	return err
+}
+
+type PostgresStateStore struct {
+	pool *pgxpool.Pool
+}
+
+type snapshotRow struct {
+	Version     int64           `json:"version"`
+	Resources   json.RawMessage `json:"resources"`
+	Assignments json.RawMessage `json:"assignments"`
+	Items       json.RawMessage `json:"items"`
+	Upgrades    json.RawMessage `json:"upgrades"`
+	Metadata    json.RawMessage `json:"metadata"`
+}
+
+func (s *PostgresStateStore) GetSnapshot(ctx context.Context, userID uuid.UUID) (domain.StateSnapshot, error) {
+	var payload []byte
+	var updatedAt time.Time
+	err := s.pool.QueryRow(ctx, `select payload, updated_at from state_snapshots where user_id = $1`, userID).Scan(&payload, &updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return emptySnapshot(userID), nil
+	}
+	if err != nil {
+		return domain.StateSnapshot{}, err
+	}
+	return decodeSnapshot(userID, payload, updatedAt)
+}
+
+func (s *PostgresStateStore) SaveSnapshot(ctx context.Context, snapshot domain.StateSnapshot) (domain.StateSnapshot, error) {
+	payload, err := encodeSnapshot(snapshot)
+	if err != nil {
+		return domain.StateSnapshot{}, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		insert into state_snapshots (user_id, version, payload)
+		values ($1, $2, $3)
+		on conflict (user_id) do update
+		set version = excluded.version, payload = excluded.payload, updated_at = now()
+		returning updated_at
+	`, snapshot.UserID, snapshot.Version, payload).Scan(&snapshot.UpdatedAt)
+	return snapshot, err
+}
+
+func emptySnapshot(userID uuid.UUID) domain.StateSnapshot {
+	return domain.StateSnapshot{
+		UserID:      userID,
+		Version:     1,
+		Resources:   []domain.Resource{},
+		Assignments: []domain.Assignment{},
+		Items:       []domain.Item{},
+		Upgrades:    []domain.Upgrade{},
+		Metadata:    map[string]any{},
+		UpdatedAt:   time.Now().UTC(),
+	}
+}
+
+func encodeSnapshot(snapshot domain.StateSnapshot) ([]byte, error) {
+	return json.Marshal(snapshotRow{
+		Version:     snapshot.Version,
+		Resources:   mustJSON(snapshot.Resources),
+		Assignments: mustJSON(snapshot.Assignments),
+		Items:       mustJSON(snapshot.Items),
+		Upgrades:    mustJSON(snapshot.Upgrades),
+		Metadata:    mustJSON(snapshot.Metadata),
+	})
+}
+
+func decodeSnapshot(userID uuid.UUID, payload []byte, updatedAt time.Time) (domain.StateSnapshot, error) {
+	var row snapshotRow
+	if err := json.Unmarshal(payload, &row); err != nil {
+		return domain.StateSnapshot{}, err
+	}
+	snapshot := emptySnapshot(userID)
+	snapshot.Version = row.Version
+	snapshot.UpdatedAt = updatedAt
+	_ = json.Unmarshal(row.Resources, &snapshot.Resources)
+	_ = json.Unmarshal(row.Assignments, &snapshot.Assignments)
+	_ = json.Unmarshal(row.Items, &snapshot.Items)
+	_ = json.Unmarshal(row.Upgrades, &snapshot.Upgrades)
+	_ = json.Unmarshal(row.Metadata, &snapshot.Metadata)
+	return snapshot, nil
+}
+
+func mustJSON(value any) json.RawMessage {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage(`null`)
+	}
+	return payload
+}
+
+type PostgresMapStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresMapStore) GetTileMap(ctx context.Context, userID uuid.UUID) (domain.TileMap, error) {
+	var payload []byte
+	var updatedAt time.Time
+	err := s.pool.QueryRow(ctx, `select payload, updated_at from user_maps where user_id = $1`, userID).Scan(&payload, &updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DefaultTileMap(userID), nil
+	}
+	if err != nil {
+		return domain.TileMap{}, err
+	}
+
+	var tileMap domain.TileMap
+	if err := json.Unmarshal(payload, &tileMap); err != nil {
+		return domain.TileMap{}, err
+	}
+	tileMap.UserID = userID
+	tileMap.UpdatedAt = updatedAt
+	return tileMap, nil
+}
+
+func (s *PostgresMapStore) SaveTileMap(ctx context.Context, tileMap domain.TileMap) (domain.TileMap, error) {
+	payload, err := json.Marshal(tileMap)
+	if err != nil {
+		return domain.TileMap{}, err
+	}
+
+	err = s.pool.QueryRow(ctx, `
+		insert into user_maps (user_id, payload)
+		values ($1, $2)
+		on conflict (user_id) do update
+		set payload = excluded.payload, updated_at = now()
+		returning updated_at
+	`, tileMap.UserID, payload).Scan(&tileMap.UpdatedAt)
+	return tileMap, err
+}
+
+func DefaultTileMap(userID uuid.UUID) domain.TileMap {
+	template := defaultTileMapTemplate()
+
+	return domain.TileMap{
+		UserID:    userID,
+		Width:     template.Width,
+		Height:    template.Height,
+		TileSize:  template.TileSize,
+		Tiles:     append([]int(nil), template.Tiles...),
+		Tilesets:  copyTilesets(template.Tilesets),
+		UpdatedAt: time.Now().UTC(),
+	}
+}
+
+var (
+	tileMapTemplateOnce sync.Once
+	tileMapTemplate     domain.TileMap
+)
+
+type tiledTemplate struct {
+	Width      int                  `json:"width"`
+	Height     int                  `json:"height"`
+	TileWidth  int                  `json:"tilewidth"`
+	TileHeight int                  `json:"tileheight"`
+	Layers     []tiledTemplateLayer `json:"layers"`
+	Tilesets   []domain.Tileset     `json:"tilesets"`
+}
+
+type tiledTemplateLayer struct {
+	Type string `json:"type"`
+	Data []int  `json:"data"`
+}
+
+func defaultTileMapTemplate() domain.TileMap {
+	tileMapTemplateOnce.Do(func() {
+		tileMapTemplate = loadTileMapTemplate()
+	})
+	return tileMapTemplate
+}
+
+func loadTileMapTemplate() domain.TileMap {
+	if path := os.Getenv("TILEMAP_PATH"); path != "" {
+		if tileMap, err := readTileMapTemplate(path); err == nil {
+			return tileMap
+		}
+	}
+
+	for _, path := range []string{
+		"tilemap.json",
+		filepath.Join("backend", "tilemap.json"),
+		filepath.Join("..", "..", "tilemap.json"),
+		filepath.Join("..", "..", "..", "tilemap.json"),
+		filepath.Join("/app", "tilemap.json"),
+	} {
+		if tileMap, err := readTileMapTemplate(path); err == nil {
+			return tileMap
+		}
+	}
+
+	return fallbackTileMapTemplate()
+}
+
+func readTileMapTemplate(path string) (domain.TileMap, error) {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return domain.TileMap{}, err
+	}
+
+	var template tiledTemplate
+	if err := json.Unmarshal(payload, &template); err != nil {
+		return domain.TileMap{}, err
+	}
+
+	tileSize := template.TileWidth
+	if tileSize <= 0 {
+		tileSize = template.TileHeight
+	}
+	if tileSize <= 0 {
+		tileSize = domain.DefaultTileMapTileSize
+	}
+
+	tiles := firstTileLayerData(template.Layers)
+	if len(tiles) != template.Width*template.Height {
+		return domain.TileMap{}, errors.New("tilemap template has invalid layer data")
+	}
+	normalizeTileIDs(tiles)
+
+	return domain.TileMap{
+		Width:    template.Width,
+		Height:   template.Height,
+		TileSize: tileSize,
+		Tiles:    tiles,
+		Tilesets: normalizeTilesets(template.Tilesets, tileSize),
+	}, nil
+}
+
+func firstTileLayerData(layers []tiledTemplateLayer) []int {
+	for _, layer := range layers {
+		if layer.Type == "tilelayer" {
+			return append([]int(nil), layer.Data...)
+		}
+	}
+	return nil
+}
+
+func fallbackTileMapTemplate() domain.TileMap {
+	tiles := make([]int, domain.DefaultTileMapWidth*domain.DefaultTileMapHeight)
+	for index := range tiles {
+		tiles[index] = 1
+	}
+	return domain.TileMap{
+		Width:    domain.DefaultTileMapWidth,
+		Height:   domain.DefaultTileMapHeight,
+		TileSize: domain.DefaultTileMapTileSize,
+		Tiles:    tiles,
+		Tilesets: []domain.Tileset{
+			{
+				Columns:     8,
+				FirstGID:    1,
+				Image:       "tiles/tile_map.png",
+				ImageWidth:  256,
+				ImageHeight: 256,
+				Name:        "tile_map",
+				TileCount:   64,
+				TileHeight:  domain.DefaultTileMapTileSize,
+				TileWidth:   domain.DefaultTileMapTileSize,
+			},
+		},
+	}
+}
+
+func normalizeTileIDs(tiles []int) {
+	for index, tileID := range tiles {
+		if tileID <= 0 {
+			tiles[index] = 1
+		}
+	}
+}
+
+func normalizeTilesets(tilesets []domain.Tileset, tileSize int) []domain.Tileset {
+	if len(tilesets) == 0 {
+		return fallbackTileMapTemplate().Tilesets
+	}
+	next := copyTilesets(tilesets)
+	for index := range next {
+		next[index].Image = "tiles/tile_map.png"
+		if next[index].TileWidth <= 0 {
+			next[index].TileWidth = tileSize
+		}
+		if next[index].TileHeight <= 0 {
+			next[index].TileHeight = tileSize
+		}
+	}
+	return next
+}
+
+func copyTilesets(tilesets []domain.Tileset) []domain.Tileset {
+	return append([]domain.Tileset(nil), tilesets...)
+}
+
+type PostgresEntityStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresEntityStore) ListEntities(ctx context.Context, userID uuid.UUID) ([]domain.Entity, error) {
+	rows, err := s.pool.Query(ctx, `
+		select id, user_id, name, type, resource_key, x, y, width, height, sprite_gid, state, metadata, created_at, updated_at
+		from user_entities
+		where user_id = $1
+		order by created_at, id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entities := []domain.Entity{}
+	for rows.Next() {
+		var entity domain.Entity
+		var metadata []byte
+		if err := rows.Scan(
+			&entity.ID,
+			&entity.UserID,
+			&entity.Name,
+			&entity.Type,
+			&entity.ResourceKey,
+			&entity.X,
+			&entity.Y,
+			&entity.Width,
+			&entity.Height,
+			&entity.SpriteGID,
+			&entity.State,
+			&metadata,
+			&entity.CreatedAt,
+			&entity.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(metadata, &entity.Metadata); err != nil {
+			entity.Metadata = map[string]any{}
+		}
+		entities = append(entities, entity)
+	}
+	return entities, rows.Err()
+}
+
+func (s *PostgresEntityStore) CreateEntity(ctx context.Context, entity domain.Entity) (domain.Entity, error) {
+	if entity.ID == uuid.Nil {
+		entity.ID = uuid.New()
+	}
+	if entity.Metadata == nil {
+		entity.Metadata = map[string]any{}
+	}
+	if entity.Name == "" {
+		entity.Name = "Entity"
+	}
+	metadata, err := json.Marshal(entity.Metadata)
+	if err != nil {
+		return domain.Entity{}, err
+	}
+
+	err = s.pool.QueryRow(ctx, `
+		insert into user_entities (id, user_id, name, type, resource_key, x, y, width, height, sprite_gid, state, metadata)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		returning created_at, updated_at
+	`,
+		entity.ID,
+		entity.UserID,
+		entity.Name,
+		entity.Type,
+		entity.ResourceKey,
+		entity.X,
+		entity.Y,
+		entity.Width,
+		entity.Height,
+		entity.SpriteGID,
+		entity.State,
+		metadata,
+	).Scan(&entity.CreatedAt, &entity.UpdatedAt)
+	return entity, err
+}
+
+type PostgresPlayerStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresPlayerStore) GetPlayer(ctx context.Context, userID uuid.UUID) (domain.Player, error) {
+	var player domain.Player
+	var movement []byte
+	err := s.pool.QueryRow(ctx, `
+		select user_id, x, y, movement, created_at, updated_at
+		from players
+		where user_id = $1
+	`, userID).Scan(
+		&player.UserID,
+		&player.X,
+		&player.Y,
+		&movement,
+		&player.CreatedAt,
+		&player.UpdatedAt,
+	)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	player.Movement = decodeMovement(movement)
+	return player, nil
+}
+
+func (s *PostgresPlayerStore) CreatePlayer(ctx context.Context, player domain.Player) (domain.Player, error) {
+	movement, err := encodeMovement(player.Movement)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		insert into players (user_id, x, y, movement)
+		values ($1, $2, $3, $4)
+		returning created_at, updated_at
+	`, player.UserID, player.X, player.Y, movement).Scan(&player.CreatedAt, &player.UpdatedAt)
+	return player, err
+}
+
+func (s *PostgresPlayerStore) SavePlayer(ctx context.Context, player domain.Player) (domain.Player, error) {
+	movement, err := encodeMovement(player.Movement)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		insert into players (user_id, x, y, movement)
+		values ($1, $2, $3, $4)
+		on conflict (user_id) do update set
+			x = excluded.x,
+			y = excluded.y,
+			movement = excluded.movement,
+			updated_at = now()
+		returning created_at, updated_at
+	`, player.UserID, player.X, player.Y, movement).Scan(&player.CreatedAt, &player.UpdatedAt)
+	return player, err
+}
+
+func encodeMovement(movement *domain.PlayerMovement) ([]byte, error) {
+	if movement == nil {
+		return nil, nil
+	}
+	return json.Marshal(movement)
+}
+
+func decodeMovement(payload []byte) *domain.PlayerMovement {
+	if len(payload) == 0 {
+		return nil
+	}
+	var movement domain.PlayerMovement
+	if err := json.Unmarshal(payload, &movement); err != nil {
+		return nil
+	}
+	return &movement
+}

@@ -1,0 +1,2 @@
+-- Intentionally not reversible. Tiled GID 0 means empty, while this migration
+-- promotes empty placeholder tiles to first-tile GID 1.

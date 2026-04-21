@@ -1,0 +1,2 @@
+-- Intentionally not reversible. Shrinking maps to 32x32 discards any tiles
+-- outside the retained top-left 32x32 area.
