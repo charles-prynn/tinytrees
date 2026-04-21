@@ -5,10 +5,15 @@ final appConfigProvider = Provider<AppConfig>((ref) {
 });
 
 class AppConfig {
-  const AppConfig({required this.apiBaseUrl, required this.environment});
+  const AppConfig({
+    required this.apiBaseUrl,
+    required this.environment,
+    required this.debugFps,
+  });
 
   final String apiBaseUrl;
   final String environment;
+  final bool debugFps;
 
   factory AppConfig.fromEnvironment() {
     return const AppConfig(
@@ -20,6 +25,7 @@ class AppConfig {
         'APP_ENV',
         defaultValue: 'development',
       ),
+      debugFps: bool.fromEnvironment('DEBUG_FPS'),
     );
   }
 }

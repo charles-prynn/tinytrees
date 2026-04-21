@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
 import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
 import '../entities/domain/world_entity.dart';
+import '../inventory/data/inventory_repository.dart';
+import '../inventory/domain/inventory_item.dart';
 import '../map/application/map_controller.dart';
 import '../map/domain/tile_map.dart';
 import '../player/application/player_controller.dart';
@@ -25,11 +30,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   List<WorldEntity>? _lastEntities;
   PlayerState? _lastPlayer;
   String? _holdLabel;
+  int _interactionSequence = 0;
+  Timer? _actionPoller;
 
   @override
   void initState() {
     super.initState();
-    _game = TileMapGame();
+    _game = TileMapGame(showFps: ref.read(appConfigProvider).debugFps);
     ref.listenManual<AsyncValue<TileMap>>(mapControllerProvider, (_, next) {
       next.whenData((value) {
         if (!identical(_lastTileMap, value)) {
@@ -58,8 +65,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           _lastPlayer = value;
           _game.setPlayer(value);
         }
+        _syncActionPoller(value.action != null);
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _actionPoller?.cancel();
+    super.dispose();
   }
 
   @override
@@ -68,6 +82,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final snapshot = ref.watch(stateSnapshotProvider);
     final tileMap = ref.watch(mapControllerProvider);
     final player = ref.watch(playerControllerProvider);
+    final inventory = ref.watch(inventoryProvider);
     ref.watch(worldEntitiesProvider);
 
     return Scaffold(
@@ -91,16 +106,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       details.localPosition,
                     );
                 if (interactionTarget != null) {
-                  final moved = await ref
-                      .read(playerControllerProvider.notifier)
-                      .moveTo(
-                        x: interactionTarget.tile.x,
-                        y: interactionTarget.tile.y,
-                      );
-                  if (!mounted || !moved) {
-                    return;
-                  }
-                  _game.facePlayer(interactionTarget.facing);
+                  await _moveAndHarvest(interactionTarget);
                   return;
                 }
 
@@ -111,6 +117,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                     )) {
                   return;
                 }
+                _interactionSequence++;
                 final moved = await ref
                     .read(playerControllerProvider.notifier)
                     .moveTo(x: tile.x, y: tile.y);
@@ -147,7 +154,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Align(
                 alignment: Alignment.bottomCenter,
-                child: _StatePanel(snapshot: snapshot, player: player),
+                child: _StatePanel(
+                  snapshot: snapshot,
+                  player: player,
+                  inventory: inventory,
+                ),
               ),
             ),
           ),
@@ -162,6 +173,51 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
     setState(() {
       _holdLabel = value;
+    });
+  }
+
+  Future<void> _moveAndHarvest(EntityInteractionTarget target) async {
+    final sequence = ++_interactionSequence;
+    final controller = ref.read(playerControllerProvider.notifier);
+    final moved = await controller.moveTo(x: target.tile.x, y: target.tile.y);
+    if (!mounted || !moved || sequence != _interactionSequence) {
+      return;
+    }
+    _game.facePlayer(target.facing);
+
+    final movement = ref.read(playerControllerProvider).value?.movement;
+    if (movement != null) {
+      final delay = movement.arrivesAt.difference(DateTime.now().toUtc());
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay + const Duration(milliseconds: 100));
+      }
+    }
+    if (!mounted || sequence != _interactionSequence) {
+      return;
+    }
+
+    final started = await controller.startHarvest(entityId: target.entityId);
+    if (!mounted || !started || sequence != _interactionSequence) {
+      return;
+    }
+    ref.invalidate(inventoryProvider);
+  }
+
+  void _syncActionPoller(bool hasActiveAction) {
+    if (!hasActiveAction) {
+      _actionPoller?.cancel();
+      _actionPoller = null;
+      return;
+    }
+    if (_actionPoller != null) {
+      return;
+    }
+    _actionPoller = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) {
+        return;
+      }
+      ref.invalidate(playerControllerProvider);
+      ref.invalidate(inventoryProvider);
     });
   }
 }
@@ -243,10 +299,15 @@ class _MapPanel extends ConsumerWidget {
 }
 
 class _StatePanel extends ConsumerWidget {
-  const _StatePanel({required this.snapshot, required this.player});
+  const _StatePanel({
+    required this.snapshot,
+    required this.player,
+    required this.inventory,
+  });
 
   final AsyncValue snapshot;
   final AsyncValue<PlayerState> player;
+  final AsyncValue<List<InventoryItem>> inventory;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -264,14 +325,29 @@ class _StatePanel extends ConsumerWidget {
                   const SizedBox(width: 12),
                   player.when(
                     data:
-                        (value) =>
-                            Text(value.movement == null ? 'Idle' : 'Walking'),
+                        (value) => Text(
+                          value.action != null
+                              ? 'Harvesting ${value.action!.rewardItemKey}'
+                              : value.movement == null
+                              ? 'Idle'
+                              : 'Walking',
+                        ),
                     loading:
                         () => const SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                     error: (_, _) => const Text('Player offline'),
+                  ),
+                  const SizedBox(width: 12),
+                  inventory.when(
+                    data: (items) => Text(_inventorySummary(items)),
+                    loading:
+                        () => const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    error: (_, _) => const Text('Inventory offline'),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -304,5 +380,12 @@ class _StatePanel extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String _inventorySummary(List<InventoryItem> items) {
+    final wood = items
+        .where((item) => item.itemKey == 'wood')
+        .fold<int>(0, (total, item) => total + item.quantity);
+    return 'Wood $wood';
   }
 }

@@ -34,4 +34,13 @@ class PlayerRepository {
     final data = unwrapData(response.data);
     return PlayerState.fromJson(data['player'] as Map<String, dynamic>);
   }
+
+  Future<PlayerAction> startHarvest({required String entityId}) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/actions/harvest',
+      data: {'entity_id': entityId},
+    );
+    final data = unwrapData(response.data);
+    return PlayerAction.fromJson(data['action'] as Map<String, dynamic>);
+  }
 }

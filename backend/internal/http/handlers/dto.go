@@ -5,6 +5,8 @@ import (
 
 	"starter/backend/internal/domain"
 	"starter/backend/internal/service"
+
+	"github.com/google/uuid"
 )
 
 type userDTO struct {
@@ -38,6 +40,14 @@ type stateSyncRequest struct {
 type playerMoveRequest struct {
 	TargetX int `json:"target_x"`
 	TargetY int `json:"target_y"`
+}
+
+type harvestRequest struct {
+	EntityID string `json:"entity_id"`
+}
+
+func (r harvestRequest) EntityUUID() (uuid.UUID, error) {
+	return uuid.Parse(r.EntityID)
 }
 
 type tiledMapDTO struct {
@@ -128,7 +138,27 @@ type playerDTO struct {
 	X         int                `json:"x"`
 	Y         int                `json:"y"`
 	Movement  *playerMovementDTO `json:"movement,omitempty"`
+	Action    *actionDTO         `json:"action,omitempty"`
 	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+type actionDTO struct {
+	ID             string         `json:"id"`
+	Type           string         `json:"type"`
+	EntityID       *string        `json:"entity_id,omitempty"`
+	Status         string         `json:"status"`
+	StartedAt      time.Time      `json:"started_at"`
+	EndsAt         time.Time      `json:"ends_at"`
+	NextTickAt     time.Time      `json:"next_tick_at"`
+	TickIntervalMs int            `json:"tick_interval_ms"`
+	Metadata       map[string]any `json:"metadata"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+type inventoryItemDTO struct {
+	ItemKey   string    `json:"item_key"`
+	Quantity  int64     `json:"quantity"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func toUserDTO(user domain.User) userDTO {
@@ -256,6 +286,7 @@ func toPlayerDTO(player domain.Player) playerDTO {
 		X:         player.X,
 		Y:         player.Y,
 		Movement:  toPlayerMovementDTO(player.Movement),
+		Action:    toActionDTO(player.Action),
 		UpdatedAt: player.UpdatedAt,
 	}
 }
@@ -280,4 +311,39 @@ func toPlayerMovementDTO(movement *domain.PlayerMovement) *playerMovementDTO {
 		ArrivesAt:           movement.ArrivesAt,
 		SpeedTilesPerSecond: movement.SpeedTilesPerSecond,
 	}
+}
+
+func toActionDTO(action *domain.PlayerAction) *actionDTO {
+	if action == nil {
+		return nil
+	}
+	var entityID *string
+	if action.EntityID != nil {
+		value := action.EntityID.String()
+		entityID = &value
+	}
+	return &actionDTO{
+		ID:             action.ID.String(),
+		Type:           action.Type,
+		EntityID:       entityID,
+		Status:         action.Status,
+		StartedAt:      action.StartedAt,
+		EndsAt:         action.EndsAt,
+		NextTickAt:     action.NextTickAt,
+		TickIntervalMs: action.TickIntervalMs,
+		Metadata:       action.Metadata,
+		UpdatedAt:      action.UpdatedAt,
+	}
+}
+
+func toInventoryDTOs(items []domain.InventoryItem) []inventoryItemDTO {
+	result := make([]inventoryItemDTO, 0, len(items))
+	for _, item := range items {
+		result = append(result, inventoryItemDTO{
+			ItemKey:   item.ItemKey,
+			Quantity:  item.Quantity,
+			UpdatedAt: item.UpdatedAt,
+		})
+	}
+	return result
 }

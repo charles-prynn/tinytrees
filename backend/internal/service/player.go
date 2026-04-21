@@ -22,6 +22,7 @@ type PlayerService struct {
 	players  store.PlayerStore
 	maps     store.MapStore
 	entities store.EntityStore
+	actions  *ActionService
 	now      func() time.Time
 }
 
@@ -34,18 +35,39 @@ func NewPlayerService(players store.PlayerStore, maps store.MapStore, entities s
 	}
 }
 
+func (s *PlayerService) SetActionService(actions *ActionService) {
+	s.actions = actions
+}
+
 func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Player, error) {
 	player, err := s.players.GetPlayer(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return s.players.CreatePlayer(ctx, defaultPlayer(userID))
+		player, err = s.players.CreatePlayer(ctx, defaultPlayer(userID))
+		if err != nil {
+			return domain.Player{}, err
+		}
+		return s.attachActiveAction(ctx, userID, player)
 	}
 	if err != nil {
 		return domain.Player{}, err
 	}
-	return s.resolveCompletedMovement(ctx, player)
+	player, err = s.resolveCompletedMovement(ctx, player)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	return s.attachActiveAction(ctx, userID, player)
 }
 
 func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int, targetY int) (domain.Player, error) {
+	if s.actions != nil {
+		active, err := s.actions.Resolve(ctx, userID)
+		if err != nil {
+			return domain.Player{}, err
+		}
+		if active != nil {
+			return domain.Player{}, ErrActionInProgress
+		}
+	}
 	tileMap, err := s.maps.GetTileMap(ctx, userID)
 	if err != nil {
 		return domain.Player{}, err
@@ -91,6 +113,18 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 		SpeedTilesPerSecond: defaultPlayerSpeedTilesPerSecond,
 	}
 	return s.players.SavePlayer(ctx, player)
+}
+
+func (s *PlayerService) attachActiveAction(ctx context.Context, userID uuid.UUID, player domain.Player) (domain.Player, error) {
+	if s.actions == nil {
+		return player, nil
+	}
+	action, err := s.actions.Resolve(ctx, userID)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	player.Action = action
+	return player, nil
 }
 
 func (s *PlayerService) loadEntities(ctx context.Context, userID uuid.UUID) ([]domain.Entity, error) {

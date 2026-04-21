@@ -16,8 +16,8 @@ import (
 	"github.com/go-chi/cors"
 )
 
-func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthService, stateService *service.StateService, mapService *service.MapService, entityService *service.EntityService, playerService *service.PlayerService) http.Handler {
-	h := handlers.New(authService, stateService, mapService, entityService, playerService)
+func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthService, stateService *service.StateService, mapService *service.MapService, entityService *service.EntityService, playerService *service.PlayerService, actionService *service.ActionService, inventoryService *service.InventoryService) http.Handler {
+	h := handlers.New(authService, stateService, mapService, entityService, playerService, actionService, inventoryService)
 	r := chi.NewRouter()
 
 	r.Use(chimiddleware.RequestID)
@@ -50,6 +50,9 @@ func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthSer
 			r.Get("/entities", h.GetEntities)
 			r.Get("/player", h.GetPlayer)
 			r.Post("/player/move", h.MovePlayer)
+			r.Get("/actions/current", h.CurrentAction)
+			r.Post("/actions/harvest", h.StartHarvest)
+			r.Get("/inventory", h.GetInventory)
 		})
 	})
 

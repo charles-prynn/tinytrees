@@ -11,15 +11,17 @@ import (
 )
 
 type Handler struct {
-	auth     *service.AuthService
-	state    *service.StateService
-	maps     *service.MapService
-	entities *service.EntityService
-	players  *service.PlayerService
+	auth      *service.AuthService
+	state     *service.StateService
+	maps      *service.MapService
+	entities  *service.EntityService
+	players   *service.PlayerService
+	actions   *service.ActionService
+	inventory *service.InventoryService
 }
 
-func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService) *Handler {
-	return &Handler{auth: auth, state: state, maps: maps, entities: entities, players: players}
+func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService) *Handler {
+	return &Handler{auth: auth, state: state, maps: maps, entities: entities, players: players, actions: actions, inventory: inventory}
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
@@ -182,4 +184,56 @@ func (h *Handler) MovePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, r, http.StatusOK, map[string]any{"player": toPlayerDTO(player)})
+}
+
+func (h *Handler) StartHarvest(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	var body harvestRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	entityID, err := body.EntityUUID()
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	action, err := h.actions.StartHarvest(r.Context(), userID, entityID)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"action": toActionDTO(&action)})
+}
+
+func (h *Handler) CurrentAction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	action, err := h.actions.Current(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"action": toActionDTO(action)})
+}
+
+func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	items, err := h.inventory.List(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": toInventoryDTOs(items)})
 }

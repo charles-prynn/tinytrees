@@ -147,6 +147,29 @@ type Player struct {
 	X         int             `json:"x"`
 	Y         int             `json:"y"`
 	Movement  *PlayerMovement `json:"movement,omitempty"`
+	Action    *PlayerAction   `json:"action,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+type InventoryItem struct {
+	UserID    uuid.UUID `json:"user_id"`
+	ItemKey   string    `json:"item_key"`
+	Quantity  int64     `json:"quantity"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type PlayerAction struct {
+	ID             uuid.UUID      `json:"id"`
+	UserID         uuid.UUID      `json:"user_id"`
+	Type           string         `json:"type"`
+	EntityID       *uuid.UUID     `json:"entity_id,omitempty"`
+	Status         string         `json:"status"`
+	StartedAt      time.Time      `json:"started_at"`
+	EndsAt         time.Time      `json:"ends_at"`
+	NextTickAt     time.Time      `json:"next_tick_at"`
+	TickIntervalMs int            `json:"tick_interval_ms"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }

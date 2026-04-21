@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
+import 'package:flame/text.dart';
 import 'package:flutter/painting.dart';
 
 import '../entities/domain/world_entity.dart';
@@ -12,10 +14,14 @@ import '../player/domain/player_state.dart';
 import 'entity_visuals.dart';
 
 class TileMapGame extends FlameGame with PanDetector {
-  TileMapGame({TileRenderConfig renderConfig = const TileRenderConfig()})
-    : _renderConfig = renderConfig;
+  TileMapGame({
+    TileRenderConfig renderConfig = const TileRenderConfig(),
+    bool showFps = false,
+  }) : _renderConfig = renderConfig,
+       _showFps = showFps;
 
   final TileRenderConfig _renderConfig;
+  final bool _showFps;
   TileMap? _pendingMap;
   List<WorldEntity> _pendingEntities = const [];
   PlayerState? _pendingPlayer;
@@ -42,6 +48,26 @@ class TileMapGame extends FlameGame with PanDetector {
       renderConfig: _renderConfig,
     );
     await add(_renderer!);
+    if (_showFps) {
+      await add(
+        FpsTextComponent<TextPaint>(
+          position: Vector2(12, 92),
+          textRenderer: TextPaint(
+            style: const TextStyle(
+              color: Color(0xFFFFFFFF),
+              fontSize: 14,
+              shadows: [
+                Shadow(
+                  color: Color(0xCC000000),
+                  offset: Offset(1, 1),
+                  blurRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final pending = _pendingMap;
     if (pending != null) {
@@ -135,6 +161,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
+  Image? _mapLayerImage;
+  Object? _mapLayerKey;
+  bool _mapLayerBuildQueued = false;
   PlayerState? _player;
   _PlayerVisualMotion? _playerVisualMotion;
   _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
@@ -155,8 +184,16 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   set currentMap(TileMap? value) {
     if (!identical(tileMap, value)) {
       tileMap = value;
+      _queueMapLayerRebuild();
       _needsCentering = true;
     }
+  }
+
+  @override
+  void onRemove() {
+    _mapLayerImage?.dispose();
+    _mapLayerImage = null;
+    super.onRemove();
   }
 
   @override
@@ -326,7 +363,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return aDistance.compareTo(bDistance);
     });
 
-    return candidates.first;
+    final target = candidates.first;
+    return EntityInteractionTarget(
+      entityId: entity.id,
+      tile: target.tile,
+      facing: target.facing,
+    );
   }
 
   void facePlayer(PlayerFacing facing) {
@@ -451,37 +493,25 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
 
     final offset = _mapOffset(map, drawTileSize);
 
-    final paint = Paint()..filterQuality = FilterQuality.none;
+    final paint =
+        Paint()
+          ..filterQuality = FilterQuality.none
+          ..isAntiAlias = false;
     final entityBorderPaint =
         Paint()
           ..color = const Color(0xFFFFD54F)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2;
     final sourceColumns = math.max(1, _tileset.width ~/ sourceTileSize);
-
-    for (var row = 0; row < map.height; row++) {
-      for (var col = 0; col < map.width; col++) {
-        final tileId = map.tileAt(col, row);
-        if (tileId <= 0) {
-          continue;
-        }
-        final sourceIndex = tileId - 1;
-        final source = Rect.fromLTWH(
-          ((sourceIndex % sourceColumns) * sourceTileSize).toDouble(),
-          ((sourceIndex ~/ sourceColumns) * sourceTileSize).toDouble(),
-          sourceTileSize.toDouble(),
-          sourceTileSize.toDouble(),
-        );
-        final destination = Rect.fromLTWH(
-          offset.dx + col * drawTileSize,
-          offset.dy + row * drawTileSize,
-          drawTileSize,
-          drawTileSize,
-        );
-
-        canvas.drawImageRect(_tileset, source, destination, paint);
-      }
-    }
+    _drawMapLayer(
+      canvas: canvas,
+      map: map,
+      offset: offset,
+      drawTileSize: drawTileSize,
+      sourceTileSize: sourceTileSize,
+      sourceColumns: sourceColumns,
+      paint: paint,
+    );
 
     for (final entity in entities) {
       _drawEntity(
@@ -563,6 +593,143 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawHeight,
     );
     canvas.drawImageRect(_playerSprite, source, destination, paint);
+  }
+
+  void _drawMapLayer({
+    required Canvas canvas,
+    required TileMap map,
+    required Offset offset,
+    required double drawTileSize,
+    required int sourceTileSize,
+    required int sourceColumns,
+    required Paint paint,
+  }) {
+    final cachedLayer = _mapLayerImage;
+    if (cachedLayer != null && _mapLayerKey == map) {
+      canvas.drawImageRect(
+        cachedLayer,
+        Rect.fromLTWH(
+          0,
+          0,
+          cachedLayer.width.toDouble(),
+          cachedLayer.height.toDouble(),
+        ),
+        Rect.fromLTWH(
+          offset.dx,
+          offset.dy,
+          map.width * drawTileSize,
+          map.height * drawTileSize,
+        ),
+        paint,
+      );
+      return;
+    }
+
+    _drawMapTiles(
+      canvas: canvas,
+      map: map,
+      offset: offset,
+      drawTileSize: drawTileSize,
+      sourceTileSize: sourceTileSize,
+      sourceColumns: sourceColumns,
+      paint: paint,
+    );
+  }
+
+  void _drawMapTiles({
+    required Canvas canvas,
+    required TileMap map,
+    required Offset offset,
+    required double drawTileSize,
+    required int sourceTileSize,
+    required int sourceColumns,
+    required Paint paint,
+  }) {
+    for (var row = 0; row < map.height; row++) {
+      for (var col = 0; col < map.width; col++) {
+        final tileId = map.tileAt(col, row);
+        if (tileId <= 0) {
+          continue;
+        }
+        final source = _tileSource(tileId, sourceTileSize, sourceColumns);
+        final destination = Rect.fromLTWH(
+          offset.dx + col * drawTileSize,
+          offset.dy + row * drawTileSize,
+          drawTileSize,
+          drawTileSize,
+        );
+
+        canvas.drawImageRect(_tileset, source, destination, paint);
+      }
+    }
+  }
+
+  Rect _tileSource(int tileId, int sourceTileSize, int sourceColumns) {
+    final sourceIndex = tileId - 1;
+    return Rect.fromLTWH(
+      ((sourceIndex % sourceColumns) * sourceTileSize).toDouble(),
+      ((sourceIndex ~/ sourceColumns) * sourceTileSize).toDouble(),
+      sourceTileSize.toDouble(),
+      sourceTileSize.toDouble(),
+    );
+  }
+
+  void _queueMapLayerRebuild() {
+    if (_mapLayerBuildQueued) {
+      return;
+    }
+    _mapLayerBuildQueued = true;
+    unawaited(_rebuildMapLayer());
+  }
+
+  Future<void> _rebuildMapLayer() async {
+    await Future<void>.delayed(Duration.zero);
+    _mapLayerBuildQueued = false;
+
+    final map = tileMap;
+    if (map == null || map.width <= 0 || map.height <= 0) {
+      final oldLayer = _mapLayerImage;
+      _mapLayerImage = null;
+      _mapLayerKey = null;
+      oldLayer?.dispose();
+      return;
+    }
+
+    final sourceTileSize = map.tileSize <= 0 ? 32 : map.tileSize;
+    final sourceColumns = math.max(1, _tileset.width ~/ sourceTileSize);
+    final imageWidth = map.width * sourceTileSize;
+    final imageHeight = map.height * sourceTileSize;
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint =
+        Paint()
+          ..filterQuality = FilterQuality.none
+          ..isAntiAlias = false;
+
+    _drawMapTiles(
+      canvas: canvas,
+      map: map,
+      offset: Offset.zero,
+      drawTileSize: sourceTileSize.toDouble(),
+      sourceTileSize: sourceTileSize,
+      sourceColumns: sourceColumns,
+      paint: paint,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(imageWidth, imageHeight);
+    picture.dispose();
+
+    if (!identical(tileMap, map)) {
+      image.dispose();
+      _queueMapLayerRebuild();
+      return;
+    }
+
+    final oldLayer = _mapLayerImage;
+    _mapLayerImage = image;
+    _mapLayerKey = map;
+    oldLayer?.dispose();
   }
 
   void _drawWalkIconEffect({
@@ -929,8 +1096,13 @@ enum _EntityRenderLayer { background, foreground }
 enum PlayerFacing { front, right, left, back }
 
 class EntityInteractionTarget {
-  const EntityInteractionTarget({required this.tile, required this.facing});
+  const EntityInteractionTarget({
+    this.entityId = '',
+    required this.tile,
+    required this.facing,
+  });
 
+  final String entityId;
   final math.Point<int> tile;
   final PlayerFacing facing;
 }

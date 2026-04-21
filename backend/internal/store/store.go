@@ -43,11 +43,24 @@ type PlayerStore interface {
 	SavePlayer(ctx context.Context, player domain.Player) (domain.Player, error)
 }
 
+type InventoryStore interface {
+	ListInventory(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error)
+	AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) error
+}
+
+type ActionStore interface {
+	GetActiveAction(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error)
+	CreateAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error)
+	SaveAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error)
+}
+
 type Stores struct {
-	Users    UserStore
-	Sessions SessionStore
-	State    StateStore
-	Maps     MapStore
-	Entities EntityStore
-	Players  PlayerStore
+	Users     UserStore
+	Sessions  SessionStore
+	State     StateStore
+	Maps      MapStore
+	Entities  EntityStore
+	Players   PlayerStore
+	Inventory InventoryStore
+	Actions   ActionStore
 }

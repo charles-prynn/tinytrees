@@ -46,6 +46,10 @@ func defaultResourceEntity(userID uuid.UUID) domain.Entity {
 		Height:      1,
 		SpriteGID:   5,
 		State:       "idle",
-		Metadata:    map[string]any{},
+		Metadata: map[string]any{
+			"reward_item_key": "wood",
+			"reward_quantity": int64(1),
+			"success_chance":  0.35,
+		},
 	}
 }

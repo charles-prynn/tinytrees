@@ -35,4 +35,27 @@ class PlayerController extends AsyncNotifier<PlayerState> {
       return false;
     }
   }
+
+  Future<bool> startHarvest({required String entityId}) async {
+    final sequence = ++_moveSequence;
+    final repository = ref.read(playerRepositoryProvider);
+    final previous = state.value;
+    try {
+      await repository.startHarvest(entityId: entityId);
+      final next = await repository.fetch();
+      if (sequence == _moveSequence) {
+        state = AsyncData(next);
+        return true;
+      }
+      return false;
+    } catch (error, stackTrace) {
+      if (sequence == _moveSequence) {
+        state =
+            previous == null
+                ? AsyncError(error, stackTrace)
+                : AsyncData(previous);
+      }
+      return false;
+    }
+  }
 }

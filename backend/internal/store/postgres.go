@@ -17,27 +17,40 @@ import (
 )
 
 type PostgresStores struct {
-	Users    *PostgresUserStore
-	Sessions *PostgresSessionStore
-	State    *PostgresStateStore
-	Maps     *PostgresMapStore
-	Entities *PostgresEntityStore
-	Players  *PostgresPlayerStore
+	Users     *PostgresUserStore
+	Sessions  *PostgresSessionStore
+	State     *PostgresStateStore
+	Maps      *PostgresMapStore
+	Entities  *PostgresEntityStore
+	Players   *PostgresPlayerStore
+	Inventory *PostgresInventoryStore
+	Actions   *PostgresActionStore
 }
 
 func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
 	return PostgresStores{
-		Users:    &PostgresUserStore{pool: pool},
-		Sessions: &PostgresSessionStore{pool: pool},
-		State:    &PostgresStateStore{pool: pool},
-		Maps:     &PostgresMapStore{pool: pool},
-		Entities: &PostgresEntityStore{pool: pool},
-		Players:  &PostgresPlayerStore{pool: pool},
+		Users:     &PostgresUserStore{pool: pool},
+		Sessions:  &PostgresSessionStore{pool: pool},
+		State:     &PostgresStateStore{pool: pool},
+		Maps:      &PostgresMapStore{pool: pool},
+		Entities:  &PostgresEntityStore{pool: pool},
+		Players:   &PostgresPlayerStore{pool: pool},
+		Inventory: &PostgresInventoryStore{pool: pool},
+		Actions:   &PostgresActionStore{pool: pool},
 	}
 }
 
 func (s PostgresStores) Interfaces() Stores {
-	return Stores{Users: s.Users, Sessions: s.Sessions, State: s.State, Maps: s.Maps, Entities: s.Entities, Players: s.Players}
+	return Stores{
+		Users:     s.Users,
+		Sessions:  s.Sessions,
+		State:     s.State,
+		Maps:      s.Maps,
+		Entities:  s.Entities,
+		Players:   s.Players,
+		Inventory: s.Inventory,
+		Actions:   s.Actions,
+	}
 }
 
 type PostgresUserStore struct {
@@ -550,4 +563,136 @@ func decodeMovement(payload []byte) *domain.PlayerMovement {
 		return nil
 	}
 	return &movement
+}
+
+type PostgresInventoryStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresInventoryStore) ListInventory(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		select user_id, item_key, quantity, updated_at
+		from player_inventory
+		where user_id = $1
+		order by item_key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []domain.InventoryItem{}
+	for rows.Next() {
+		var item domain.InventoryItem
+		if err := rows.Scan(&item.UserID, &item.ItemKey, &item.Quantity, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresInventoryStore) AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) error {
+	_, err := s.pool.Exec(ctx, `
+		insert into player_inventory (user_id, item_key, quantity)
+		values ($1, $2, $3)
+		on conflict (user_id, item_key) do update set
+			quantity = player_inventory.quantity + excluded.quantity,
+			updated_at = now()
+	`, userID, itemKey, quantity)
+	return err
+}
+
+type PostgresActionStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresActionStore) GetActiveAction(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error) {
+	var action domain.PlayerAction
+	var entityID *uuid.UUID
+	var metadata []byte
+	err := s.pool.QueryRow(ctx, `
+		select id, user_id, type, entity_id, status, started_at, ends_at, next_tick_at, tick_interval_ms, metadata, created_at, updated_at
+		from player_actions
+		where user_id = $1 and status = 'active'
+		order by started_at desc
+		limit 1
+	`, userID).Scan(
+		&action.ID,
+		&action.UserID,
+		&action.Type,
+		&entityID,
+		&action.Status,
+		&action.StartedAt,
+		&action.EndsAt,
+		&action.NextTickAt,
+		&action.TickIntervalMs,
+		&metadata,
+		&action.CreatedAt,
+		&action.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	action.EntityID = entityID
+	if err := json.Unmarshal(metadata, &action.Metadata); err != nil {
+		action.Metadata = map[string]any{}
+	}
+	return &action, nil
+}
+
+func (s *PostgresActionStore) CreateAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error) {
+	if action.ID == uuid.Nil {
+		action.ID = uuid.New()
+	}
+	if action.Metadata == nil {
+		action.Metadata = map[string]any{}
+	}
+	metadata, err := json.Marshal(action.Metadata)
+	if err != nil {
+		return domain.PlayerAction{}, err
+	}
+
+	err = s.pool.QueryRow(ctx, `
+		insert into player_actions (id, user_id, type, entity_id, status, started_at, ends_at, next_tick_at, tick_interval_ms, metadata)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		returning created_at, updated_at
+	`,
+		action.ID,
+		action.UserID,
+		action.Type,
+		action.EntityID,
+		action.Status,
+		action.StartedAt,
+		action.EndsAt,
+		action.NextTickAt,
+		action.TickIntervalMs,
+		metadata,
+	).Scan(&action.CreatedAt, &action.UpdatedAt)
+	return action, err
+}
+
+func (s *PostgresActionStore) SaveAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error) {
+	if action.Metadata == nil {
+		action.Metadata = map[string]any{}
+	}
+	metadata, err := json.Marshal(action.Metadata)
+	if err != nil {
+		return domain.PlayerAction{}, err
+	}
+
+	err = s.pool.QueryRow(ctx, `
+		update player_actions
+		set status = $2,
+			ends_at = $3,
+			next_tick_at = $4,
+			metadata = $5,
+			updated_at = now()
+		where id = $1
+		returning created_at, updated_at
+	`, action.ID, action.Status, action.EndsAt, action.NextTickAt, metadata).Scan(&action.CreatedAt, &action.UpdatedAt)
+	return action, err
 }

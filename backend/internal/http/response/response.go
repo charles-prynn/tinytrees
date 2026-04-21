@@ -35,7 +35,12 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusUnauthorized
 		code = "unauthorized"
 		message = "authentication is required"
-	case errors.Is(err, service.ErrValidation), errors.Is(err, service.ErrInvalidStateVersion), errors.Is(err, service.ErrInvalidMoveTarget):
+	case errors.Is(err, service.ErrValidation),
+		errors.Is(err, service.ErrInvalidStateVersion),
+		errors.Is(err, service.ErrInvalidMoveTarget),
+		errors.Is(err, service.ErrActionInProgress),
+		errors.Is(err, service.ErrInvalidHarvestTarget),
+		errors.Is(err, service.ErrPlayerIsMoving):
 		status = http.StatusBadRequest
 		code = "validation_error"
 		message = err.Error()

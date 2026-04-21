@@ -52,10 +52,13 @@ func run(log interface {
 	mapService := service.NewMapService(stores.Maps)
 	entityService := service.NewEntityService(stores.Entities)
 	playerService := service.NewPlayerService(stores.Players, stores.Maps, stores.Entities)
+	actionService := service.NewActionService(stores.Actions, stores.Inventory, stores.Players, stores.Entities)
+	playerService.SetActionService(actionService)
+	inventoryService := service.NewInventoryService(stores.Inventory, actionService)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           apphttp.NewRouter(cfg, logger.New(), authService, stateService, mapService, entityService, playerService),
+		Handler:           apphttp.NewRouter(cfg, logger.New(), authService, stateService, mapService, entityService, playerService, actionService, inventoryService),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
