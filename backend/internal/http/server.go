@@ -43,6 +43,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthSer
 			r.Use(appmiddleware.Auth(authService))
 			r.Post("/auth/logout", h.Logout)
 			r.Get("/me", h.Me)
+			r.Get("/ws", h.WebSocket)
 			r.Get("/bootstrap", h.Bootstrap)
 			r.Get("/state", h.GetState)
 			r.Post("/state/sync", h.SyncState)

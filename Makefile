@@ -1,4 +1,5 @@
 API_BASE_URL ?= http://localhost:8080
+WEBSOCKET_BASE_URL ?= ws://localhost:8080
 DATABASE_URL ?= postgres://app:app@localhost:5432/app?sslmode=disable
 ACCESS_TOKEN_SECRET ?= change-me-access
 REFRESH_TOKEN_SECRET ?= change-me-refresh
@@ -44,10 +45,10 @@ help:
 run: backend-up frontend
 
 frontend:
-	cd frontend && flutter run --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS)
+	cd frontend && flutter run --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS)
 
 web: backend-up
-	cd frontend && flutter run -d chrome --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS)
+	cd frontend && flutter run -d chrome --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS)
 
 ios-flutter-config:
 	@mkdir -p "$(IOS_FLUTTER_CONFIG_HOME)"
@@ -83,13 +84,13 @@ ios-sim-sync:
 		frontend/ "$(IOS_RUN_DIR)/frontend/"
 
 ios-sim-build: ios-flutter-config ios-clean-xattrs ios-sim-sync
-	cd "$(IOS_RUN_DIR)/frontend" && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter build ios --simulator --debug --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS)
+	cd "$(IOS_RUN_DIR)/frontend" && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter build ios --simulator --debug --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS)
 
 ios-sim-run: backend-up ios-flutter-config ios-clean-xattrs ios-sim-boot
 	@if [ -n "$(IOS_DEVICE_ID)" ]; then \
-		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_ID)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
+		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_ID)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
 	else \
-		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_SIMULATOR)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
+		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_SIMULATOR)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
 	fi
 
 backend:

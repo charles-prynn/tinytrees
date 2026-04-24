@@ -65,7 +65,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           _lastPlayer = value;
           _game.setPlayer(value);
         }
-        _syncActionPoller(value.action != null);
+        _syncActionPoller(value.action);
       });
     });
   }
@@ -80,7 +80,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider).value;
     final snapshot = ref.watch(stateSnapshotProvider);
-    final tileMap = ref.watch(mapControllerProvider);
     final player = ref.watch(playerControllerProvider);
     final inventory = ref.watch(inventoryProvider);
     ref.watch(worldEntitiesProvider);
@@ -142,15 +141,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 60, 12, 0),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: _MapPanel(tileMap: tileMap),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Align(
                 alignment: Alignment.bottomCenter,
@@ -203,8 +193,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     ref.invalidate(inventoryProvider);
   }
 
-  void _syncActionPoller(bool hasActiveAction) {
-    if (!hasActiveAction) {
+  void _syncActionPoller(PlayerAction? action) {
+    if (action == null) {
       _actionPoller?.cancel();
       _actionPoller = null;
       return;
@@ -216,8 +206,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       if (!mounted) {
         return;
       }
-      ref.invalidate(playerControllerProvider);
       ref.invalidate(inventoryProvider);
+      if (!DateTime.now().toUtc().isBefore(action.endsAt)) {
+        ref.invalidate(playerControllerProvider);
+      }
     });
   }
 }
@@ -252,48 +244,6 @@ class _TopBar extends StatelessWidget {
         ],
         TextButton(onPressed: onLogout, child: const Text('Logout')),
       ],
-    );
-  }
-}
-
-class _MapPanel extends ConsumerWidget {
-  const _MapPanel({required this.tileMap});
-
-  final AsyncValue<TileMap> tileMap;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
-      borderRadius: BorderRadius.circular(8),
-      color: Theme.of(context).colorScheme.surface,
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: tileMap.when(
-          data:
-              (value) => Text(
-                'Map ${value.width}x${value.height} | source tile ${value.tileSize}px',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-          loading: () => const LinearProgressIndicator(),
-          error:
-              (error, _) => Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Map load failed: $error',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => ref.invalidate(mapControllerProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-        ),
-      ),
     );
   }
 }

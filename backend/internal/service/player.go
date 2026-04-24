@@ -60,12 +60,8 @@ func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Playe
 
 func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int, targetY int) (domain.Player, error) {
 	if s.actions != nil {
-		active, err := s.actions.Resolve(ctx, userID)
-		if err != nil {
+		if err := s.actions.CancelActive(ctx, userID); err != nil {
 			return domain.Player{}, err
-		}
-		if active != nil {
-			return domain.Player{}, ErrActionInProgress
 		}
 	}
 	tileMap, err := s.maps.GetTileMap(ctx, userID)

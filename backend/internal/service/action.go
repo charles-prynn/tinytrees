@@ -51,6 +51,16 @@ func (s *ActionService) Current(ctx context.Context, userID uuid.UUID) (*domain.
 	return s.Resolve(ctx, userID)
 }
 
+func (s *ActionService) CancelActive(ctx context.Context, userID uuid.UUID) error {
+	action, err := s.Resolve(ctx, userID)
+	if err != nil || action == nil {
+		return err
+	}
+	action.Status = "cancelled"
+	_, err = s.actions.SaveAction(ctx, *action)
+	return err
+}
+
 func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) (domain.PlayerAction, error) {
 	if _, err := s.Resolve(ctx, userID); err != nil {
 		return domain.PlayerAction{}, err

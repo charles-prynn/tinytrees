@@ -7,11 +7,13 @@ final appConfigProvider = Provider<AppConfig>((ref) {
 class AppConfig {
   const AppConfig({
     required this.apiBaseUrl,
+    required this.websocketBaseUrl,
     required this.environment,
     required this.debugFps,
   });
 
   final String apiBaseUrl;
+  final String websocketBaseUrl;
   final String environment;
   final bool debugFps;
 
@@ -20,6 +22,10 @@ class AppConfig {
       apiBaseUrl: String.fromEnvironment(
         'API_BASE_URL',
         defaultValue: 'http://localhost:8080',
+      ),
+      websocketBaseUrl: String.fromEnvironment(
+        'WEBSOCKET_BASE_URL',
+        defaultValue: 'ws://localhost:8080',
       ),
       environment: String.fromEnvironment(
         'APP_ENV',
