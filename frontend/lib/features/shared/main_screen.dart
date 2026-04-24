@@ -212,7 +212,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 class _TopBar extends StatelessWidget {
   const _TopBar();
 
-  static const _barHeight = 64.0;
+  static const _barHeight = 50.0;
   static const _capSourceWidth = 25.0;
   static const _sourceHeight = 130.0;
 
@@ -220,41 +220,45 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _barHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: _capWidth,
-            child: const Image(
-              image: AssetImage('assets/images/ui/bar/left-bar.png'),
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.none,
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        height: _barHeight,
+        width: double.infinity,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: _capWidth,
+              child: const Image(
+                image: AssetImage('assets/images/ui/bar/left-bar.png'),
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.none,
+              ),
             ),
-          ),
-          Expanded(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage('assets/images/ui/bar/middle-bar.png'),
-                  repeat: ImageRepeat.repeatX,
-                  fit: BoxFit.fitHeight,
-                  alignment: Alignment.centerLeft,
-                  filterQuality: FilterQuality.none,
+            Expanded(
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/images/ui/bar/middle-bar.png'),
+                    repeat: ImageRepeat.repeatX,
+                    fit: BoxFit.fitHeight,
+                    alignment: Alignment.centerLeft,
+                    filterQuality: FilterQuality.none,
+                  ),
                 ),
               ),
             ),
-          ),
-          SizedBox(
-            width: _capWidth,
-            child: const Image(
-              image: AssetImage('assets/images/ui/bar/right-bar.png'),
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.none,
+            SizedBox(
+              width: _capWidth,
+              child: const Image(
+                image: AssetImage('assets/images/ui/bar/right-bar.png'),
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.none,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
