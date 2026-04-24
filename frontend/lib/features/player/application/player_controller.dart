@@ -41,11 +41,8 @@ class PlayerController extends AsyncNotifier<PlayerState> {
     final repository = ref.read(playerRepositoryProvider);
     final previous = state.value;
     try {
-      final action = await repository.startHarvest(entityId: entityId);
-      final next =
-          previous == null
-              ? await repository.fetch()
-              : _playerStateAfterHarvest(previous, action);
+      await repository.startHarvest(entityId: entityId);
+      final next = await repository.fetch();
       if (sequence == _moveSequence) {
         state = AsyncData(next);
         return true;
@@ -60,12 +57,5 @@ class PlayerController extends AsyncNotifier<PlayerState> {
       }
       return false;
     }
-  }
-
-  PlayerState _playerStateAfterHarvest(
-    PlayerState previous,
-    PlayerAction action,
-  ) {
-    return previous.copyWith(action: action);
   }
 }

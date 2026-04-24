@@ -168,6 +168,9 @@ func wsError(id string, messageType string, err error) wsServerMessage {
 	case errors.Is(err, service.ErrUnauthorized):
 		code = "unauthorized"
 		message = "authentication is required"
+	case errors.Is(err, service.ErrEmailTaken):
+		code = "conflict"
+		message = err.Error()
 	case errors.Is(err, service.ErrValidation),
 		errors.Is(err, service.ErrInvalidStateVersion),
 		errors.Is(err, service.ErrInvalidMoveTarget),

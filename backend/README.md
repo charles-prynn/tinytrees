@@ -33,8 +33,10 @@ make migrate-down
 
 - `GET /health`
 - `POST /v1/auth/guest/login`
+- `POST /v1/auth/login`
 - `POST /v1/auth/refresh`
 - `POST /v1/auth/logout`
+- `POST /v1/auth/guest/upgrade`
 - `GET /v1/me`
 - `GET /v1/ws`
 - `GET /v1/bootstrap`
@@ -87,4 +89,33 @@ Errors use the same shape as HTTP errors:
 
 ```json
 { "id": "3", "type": "player.move.error", "error": { "code": "validation_error", "message": "move target is not walkable" } }
+```
+
+## Auth Modes
+
+The backend now supports:
+
+- guest login for instant play
+- guest account upgrade to email/password
+- password login for returning users
+
+Upgrade the current authenticated guest user:
+
+```json
+POST /v1/auth/guest/upgrade
+{
+  "email": "player@example.com",
+  "password": "password123",
+  "display_name": "Player"
+}
+```
+
+Login with email/password later:
+
+```json
+POST /v1/auth/login
+{
+  "email": "player@example.com",
+  "password": "password123"
+}
 ```

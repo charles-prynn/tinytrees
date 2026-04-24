@@ -47,6 +47,20 @@ func (h *Handler) GuestLogin(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, toAuthDTO(result))
 }
 
+func (h *Handler) PasswordLogin(w http.ResponseWriter, r *http.Request) {
+	var body passwordLoginRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	result, err := h.auth.LoginPassword(r.Context(), body.Email, body.Password)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, toAuthDTO(result))
+}
+
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var body refreshRequest
 	if err := response.DecodeJSON(r, &body); err != nil || body.RefreshToken == "" {
@@ -72,6 +86,25 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, r, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *Handler) UpgradeGuest(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	var body guestUpgradeRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	user, err := h.auth.UpgradeGuest(r.Context(), userID, body.Email, body.Password, body.DisplayName)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"user": toUserDTO(user)})
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {

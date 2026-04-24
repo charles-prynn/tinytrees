@@ -38,10 +38,12 @@ func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthSer
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/auth/guest/login", h.GuestLogin)
+		r.Post("/auth/login", h.PasswordLogin)
 		r.Post("/auth/refresh", h.Refresh)
 
 		r.Group(func(r chi.Router) {
 			r.Use(appmiddleware.Auth(authService))
+			r.Post("/auth/guest/upgrade", h.UpgradeGuest)
 			r.Post("/auth/logout", h.Logout)
 			r.Get("/me", h.Me)
 			r.Get("/ws", h.WebSocket)

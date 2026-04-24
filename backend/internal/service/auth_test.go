@@ -34,14 +34,52 @@ func TestAuthServiceGuestLoginAndRefresh(t *testing.T) {
 	}
 }
 
+func TestAuthServiceUpgradeGuestAndLoginPassword(t *testing.T) {
+	users := &memoryUsers{passwords: map[uuid.UUID]string{}}
+	sessions := &memorySessions{items: map[uuid.UUID]domain.Session{}}
+	tokenManager := auth.NewTokenManager("access-secret", "refresh-secret", time.Minute, time.Hour)
+	service := NewAuthService(users, sessions, tokenManager)
+
+	login, err := service.LoginGuest(context.Background())
+	if err != nil {
+		t.Fatalf("LoginGuest returned error: %v", err)
+	}
+
+	upgraded, err := service.UpgradeGuest(context.Background(), login.User.ID, "player@example.com", "password123", "Player")
+	if err != nil {
+		t.Fatalf("UpgradeGuest returned error: %v", err)
+	}
+	if upgraded.Provider != "local" || upgraded.Email == nil || *upgraded.Email != "player@example.com" {
+		t.Fatalf("unexpected upgraded user: %+v", upgraded)
+	}
+
+	authResult, err := service.LoginPassword(context.Background(), "player@example.com", "password123")
+	if err != nil {
+		t.Fatalf("LoginPassword returned error: %v", err)
+	}
+	if authResult.User.ID != login.User.ID {
+		t.Fatalf("expected password login to reuse guest user id %s, got %s", login.User.ID, authResult.User.ID)
+	}
+}
+
 type memoryUsers struct {
-	items []domain.User
+	items     []domain.User
+	passwords map[uuid.UUID]string
 }
 
 func (m *memoryUsers) CreateGuest(_ context.Context) (domain.User, error) {
 	user := domain.User{ID: uuid.New(), Provider: "guest", DisplayName: "Guest", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	m.items = append(m.items, user)
 	return user, nil
+}
+
+func (m *memoryUsers) GetByEmail(_ context.Context, email string) (domain.User, error) {
+	for _, user := range m.items {
+		if user.Email != nil && *user.Email == email {
+			return user, nil
+		}
+	}
+	return domain.User{}, ErrUnauthorized
 }
 
 func (m *memoryUsers) GetByID(_ context.Context, id uuid.UUID) (domain.User, error) {
@@ -51,6 +89,33 @@ func (m *memoryUsers) GetByID(_ context.Context, id uuid.UUID) (domain.User, err
 		}
 	}
 	return domain.User{}, ErrUnauthorized
+}
+
+func (m *memoryUsers) GetPasswordHash(_ context.Context, id uuid.UUID) (string, error) {
+	hash, ok := m.passwords[id]
+	if !ok {
+		return "", ErrUnauthorized
+	}
+	return hash, nil
+}
+
+func (m *memoryUsers) UpgradeGuest(_ context.Context, id uuid.UUID, email string, passwordHash string, displayName string) (domain.User, error) {
+	for index, user := range m.items {
+		if user.ID != id {
+			continue
+		}
+		user.Provider = "local"
+		user.Email = &email
+		user.DisplayName = displayName
+		user.UpdatedAt = time.Now()
+		m.items[index] = user
+		if m.passwords == nil {
+			m.passwords = map[uuid.UUID]string{}
+		}
+		m.passwords[id] = passwordHash
+		return user, nil
+	}
+	return domain.User{}, ErrValidation
 }
 
 type memorySessions struct {
