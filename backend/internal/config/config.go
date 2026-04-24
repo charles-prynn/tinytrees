@@ -70,9 +70,14 @@ func getList(key string, fallback []string) []string {
 	parts := strings.Split(value, ",")
 	items := make([]string, 0, len(parts))
 	for _, part := range parts {
-		if trimmed := strings.TrimSpace(part); trimmed != "" {
+		if trimmed := normalizeListValue(part); trimmed != "" {
 			items = append(items, trimmed)
 		}
 	}
 	return items
+}
+
+func normalizeListValue(value string) string {
+	trimmed := strings.TrimSpace(value)
+	return strings.Trim(trimmed, `"'`)
 }
