@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
-import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
 import '../entities/domain/world_entity.dart';
 import '../inventory/data/inventory_repository.dart';
@@ -78,7 +77,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authControllerProvider).value;
     final snapshot = ref.watch(stateSnapshotProvider);
     final player = ref.watch(playerControllerProvider);
     final inventory = ref.watch(inventoryProvider);
@@ -131,12 +129,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: _TopBar(
-                holdLabel: _holdLabel,
-                displayName: auth?.user.displayName,
-                onLogout:
-                    () => ref.read(authControllerProvider.notifier).logout(),
-              ),
+              child: const _TopBar(),
             ),
           ),
           SafeArea(
@@ -217,35 +210,52 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.holdLabel,
-    required this.displayName,
-    required this.onLogout,
-  });
+  const _TopBar();
 
-  final String? holdLabel;
-  final String? displayName;
-  final VoidCallback onLogout;
+  static const _barHeight = 64.0;
+  static const _capSourceWidth = 25.0;
+  static const _sourceHeight = 130.0;
+
+  double get _capWidth => _barHeight * (_capSourceWidth / _sourceHeight);
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            holdLabel ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium,
+    return SizedBox(
+      height: _barHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: _capWidth,
+            child: const Image(
+              image: AssetImage('assets/images/ui/bar/left-bar.png'),
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.none,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        if (displayName != null) ...[
-          Text(displayName!),
-          const SizedBox(width: 12),
+          Expanded(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                image: DecorationImage(
+                  image: AssetImage('assets/images/ui/bar/middle-bar.png'),
+                  repeat: ImageRepeat.repeatX,
+                  fit: BoxFit.fitHeight,
+                  alignment: Alignment.centerLeft,
+                  filterQuality: FilterQuality.none,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _capWidth,
+            child: const Image(
+              image: AssetImage('assets/images/ui/bar/right-bar.png'),
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.none,
+            ),
+          ),
         ],
-        TextButton(onPressed: onLogout, child: const Text('Logout')),
-      ],
+      ),
     );
   }
 }
