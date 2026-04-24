@@ -139,6 +139,7 @@ type playerDTO struct {
 	Y         int                `json:"y"`
 	Movement  *playerMovementDTO `json:"movement,omitempty"`
 	Action    *actionDTO         `json:"action,omitempty"`
+	Skills    []playerSkillDTO   `json:"skills,omitempty"`
 	UpdatedAt time.Time          `json:"updated_at"`
 }
 
@@ -158,6 +159,13 @@ type actionDTO struct {
 type inventoryItemDTO struct {
 	ItemKey   string    `json:"item_key"`
 	Quantity  int64     `json:"quantity"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type playerSkillDTO struct {
+	SkillKey  string    `json:"skill_key"`
+	XP        int64     `json:"xp"`
+	Level     int       `json:"level"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -287,6 +295,7 @@ func toPlayerDTO(player domain.Player) playerDTO {
 		Y:         player.Y,
 		Movement:  toPlayerMovementDTO(player.Movement),
 		Action:    toActionDTO(player.Action),
+		Skills:    toPlayerSkillDTOs(player.Skills),
 		UpdatedAt: player.UpdatedAt,
 	}
 }
@@ -343,6 +352,19 @@ func toInventoryDTOs(items []domain.InventoryItem) []inventoryItemDTO {
 			ItemKey:   item.ItemKey,
 			Quantity:  item.Quantity,
 			UpdatedAt: item.UpdatedAt,
+		})
+	}
+	return result
+}
+
+func toPlayerSkillDTOs(skills []domain.PlayerSkill) []playerSkillDTO {
+	result := make([]playerSkillDTO, 0, len(skills))
+	for _, skill := range skills {
+		result = append(result, playerSkillDTO{
+			SkillKey:  skill.SkillKey,
+			XP:        skill.XP,
+			Level:     skill.Level,
+			UpdatedAt: skill.UpdatedAt,
 		})
 	}
 	return result

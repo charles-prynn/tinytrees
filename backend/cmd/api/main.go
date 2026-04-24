@@ -51,8 +51,8 @@ func run(log interface {
 	stateService := service.NewStateService(stores.State)
 	mapService := service.NewMapService(stores.Maps)
 	entityService := service.NewEntityService(stores.Entities)
-	playerService := service.NewPlayerService(stores.Players, stores.Maps, stores.Entities)
-	actionService := service.NewActionService(stores.Actions, stores.Inventory, stores.Players, stores.Entities)
+	playerService := service.NewPlayerService(stores.Players, stores.Maps, stores.Entities, stores.Skills)
+	actionService := service.NewActionService(stores.Actions, stores.Inventory, stores.Skills, stores.Players, stores.Entities)
 	playerService.SetActionService(actionService)
 	inventoryService := service.NewInventoryService(stores.Inventory, actionService)
 

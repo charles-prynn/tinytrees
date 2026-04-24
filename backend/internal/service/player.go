@@ -22,15 +22,17 @@ type PlayerService struct {
 	players  store.PlayerStore
 	maps     store.MapStore
 	entities store.EntityStore
+	skills   store.SkillStore
 	actions  *ActionService
 	now      func() time.Time
 }
 
-func NewPlayerService(players store.PlayerStore, maps store.MapStore, entities store.EntityStore) *PlayerService {
+func NewPlayerService(players store.PlayerStore, maps store.MapStore, entities store.EntityStore, skills store.SkillStore) *PlayerService {
 	return &PlayerService{
 		players:  players,
 		maps:     maps,
 		entities: entities,
+		skills:   skills,
 		now:      func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -113,13 +115,25 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 
 func (s *PlayerService) attachActiveAction(ctx context.Context, userID uuid.UUID, player domain.Player) (domain.Player, error) {
 	if s.actions == nil {
-		return player, nil
+		return s.attachSkills(ctx, userID, player)
 	}
 	action, err := s.actions.Resolve(ctx, userID)
 	if err != nil {
 		return domain.Player{}, err
 	}
 	player.Action = action
+	return s.attachSkills(ctx, userID, player)
+}
+
+func (s *PlayerService) attachSkills(ctx context.Context, userID uuid.UUID, player domain.Player) (domain.Player, error) {
+	if s.skills == nil {
+		return player, nil
+	}
+	skills, err := s.skills.ListSkills(ctx, userID)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	player.Skills = skills
 	return player, nil
 }
 

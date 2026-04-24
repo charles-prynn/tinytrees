@@ -13,7 +13,7 @@ PostgreSQL service.
 6. Generate a public Railway domain for the API service.
 
 Railway will build the API from `backend/Dockerfile`. The Railway config adds a
-`/health` health check and restart policy.
+pre-deploy migration step, a `/health` health check, and restart policy.
 
 ## API variables
 
@@ -38,17 +38,26 @@ Generate secrets locally with:
 openssl rand -base64 48
 ```
 
-## Run migrations
+## Migrations
 
-Run migrations after creating Postgres and before relying on the API:
+API deploys now run migrations automatically in Railway before the new
+deployment is started:
+
+```sh
+sh -lc '/app/migrate -path /app/migrations -database "$DATABASE_URL" up'
+```
+
+This runs as the service's pre-deploy command, so:
+
+1. A failed migration blocks the deploy.
+2. The app only starts after migrations succeed.
+3. You do not need a separate migration service for normal deploys.
+
+If you need to run migrations manually from your machine, this still works:
 
 ```sh
 DATABASE_URL='postgres://...' make migrate-prod
 ```
-
-Use the externally reachable Railway Postgres connection string when running
-this from your machine. Railway documents external PostgreSQL access through its
-TCP proxy, which is enabled by default.
 
 ## Smoke test
 

@@ -24,6 +24,7 @@ type PostgresStores struct {
 	Entities  *PostgresEntityStore
 	Players   *PostgresPlayerStore
 	Inventory *PostgresInventoryStore
+	Skills    *PostgresSkillStore
 	Actions   *PostgresActionStore
 }
 
@@ -36,6 +37,7 @@ func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
 		Entities:  &PostgresEntityStore{pool: pool},
 		Players:   &PostgresPlayerStore{pool: pool},
 		Inventory: &PostgresInventoryStore{pool: pool},
+		Skills:    &PostgresSkillStore{pool: pool},
 		Actions:   &PostgresActionStore{pool: pool},
 	}
 }
@@ -49,6 +51,7 @@ func (s PostgresStores) Interfaces() Stores {
 		Entities:  s.Entities,
 		Players:   s.Players,
 		Inventory: s.Inventory,
+		Skills:    s.Skills,
 		Actions:   s.Actions,
 	}
 }
@@ -601,6 +604,90 @@ func (s *PostgresInventoryStore) AddInventoryItem(ctx context.Context, userID uu
 			updated_at = now()
 	`, userID, itemKey, quantity)
 	return err
+}
+
+type PostgresSkillStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresSkillStore) ListSkills(ctx context.Context, userID uuid.UUID) ([]domain.PlayerSkill, error) {
+	rows, err := s.pool.Query(ctx, `
+		select user_id, skill_key, xp, level, updated_at
+		from player_skills
+		where user_id = $1
+		order by skill_key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	skills := []domain.PlayerSkill{}
+	for rows.Next() {
+		var skill domain.PlayerSkill
+		if err := rows.Scan(&skill.UserID, &skill.SkillKey, &skill.XP, &skill.Level, &skill.UpdatedAt); err != nil {
+			return nil, err
+		}
+		skills = append(skills, skill)
+	}
+	return skills, rows.Err()
+}
+
+func (s *PostgresSkillStore) AddXP(ctx context.Context, userID uuid.UUID, skillKey string, xp int64) (domain.PlayerSkill, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.PlayerSkill{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var skill domain.PlayerSkill
+	err = tx.QueryRow(ctx, `
+		insert into player_skills (user_id, skill_key, xp, level)
+		values ($1, $2, $3, $4)
+		on conflict (user_id, skill_key) do update set
+			xp = player_skills.xp + excluded.xp,
+			updated_at = now()
+		returning user_id, skill_key, xp, level, updated_at
+	`, userID, skillKey, xp, skillLevelForXP(xp)).Scan(
+		&skill.UserID,
+		&skill.SkillKey,
+		&skill.XP,
+		&skill.Level,
+		&skill.UpdatedAt,
+	)
+	if err != nil {
+		return domain.PlayerSkill{}, err
+	}
+
+	skill.Level = skillLevelForXP(skill.XP)
+	err = tx.QueryRow(ctx, `
+		update player_skills
+		set level = $3, updated_at = now()
+		where user_id = $1 and skill_key = $2
+		returning updated_at
+	`, userID, skillKey, skill.Level).Scan(&skill.UpdatedAt)
+	if err != nil {
+		return domain.PlayerSkill{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.PlayerSkill{}, err
+	}
+	return skill, nil
+}
+
+func skillLevelForXP(xp int64) int {
+	level := 1
+	for xp >= xpRequiredForLevel(level+1) {
+		level++
+	}
+	return level
+}
+
+func xpRequiredForLevel(level int) int64 {
+	if level <= 1 {
+		return 0
+	}
+	return int64(level*level*100 - 100)
 }
 
 type PostgresActionStore struct {

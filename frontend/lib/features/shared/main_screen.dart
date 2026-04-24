@@ -207,8 +207,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         return;
       }
       ref.invalidate(inventoryProvider);
+      ref.invalidate(playerControllerProvider);
       if (!DateTime.now().toUtc().isBefore(action.endsAt)) {
-        ref.invalidate(playerControllerProvider);
+        _actionPoller?.cancel();
+        _actionPoller = null;
       }
     });
   }
@@ -300,6 +302,16 @@ class _StatePanel extends ConsumerWidget {
                     error: (_, _) => const Text('Inventory offline'),
                   ),
                   const SizedBox(width: 12),
+                  player.when(
+                    data: (value) => Text(_woodcuttingSummary(value)),
+                    loading:
+                        () => const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    error: (_, _) => const Text('Skills offline'),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       value.updatedAt == null
@@ -337,5 +349,14 @@ class _StatePanel extends ConsumerWidget {
         .where((item) => item.itemKey == 'wood')
         .fold<int>(0, (total, item) => total + item.quantity);
     return 'Wood $wood';
+  }
+
+  String _woodcuttingSummary(PlayerState player) {
+    final skill = player.skillByKey('woodcutting');
+    if (skill == null) {
+      return 'Woodcutting Lv 1 (0 XP)';
+    }
+    final remaining = skill.nextLevelXP - skill.xp;
+    return 'Woodcutting Lv ${skill.level} (${skill.xp} XP, ${remaining > 0 ? remaining : 0} to next)';
   }
 }

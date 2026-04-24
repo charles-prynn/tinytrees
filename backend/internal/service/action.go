@@ -21,6 +21,8 @@ const (
 	defaultHarvestSuccessChance  = 0.35
 	defaultHarvestRewardItemKey  = "wood"
 	defaultHarvestRewardQuantity = int64(1)
+	defaultHarvestSkillKey       = "woodcutting"
+	defaultHarvestXPPerReward    = int64(25)
 )
 
 var (
@@ -32,15 +34,17 @@ var (
 type ActionService struct {
 	actions   store.ActionStore
 	inventory store.InventoryStore
+	skills    store.SkillStore
 	players   store.PlayerStore
 	entities  store.EntityStore
 	now       func() time.Time
 }
 
-func NewActionService(actions store.ActionStore, inventory store.InventoryStore, players store.PlayerStore, entities store.EntityStore) *ActionService {
+func NewActionService(actions store.ActionStore, inventory store.InventoryStore, skills store.SkillStore, players store.PlayerStore, entities store.EntityStore) *ActionService {
 	return &ActionService{
 		actions:   actions,
 		inventory: inventory,
+		skills:    skills,
 		players:   players,
 		entities:  entities,
 		now:       func() time.Time { return time.Now().UTC() },
@@ -98,6 +102,24 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 		return domain.PlayerAction{}, ErrInvalidHarvestTarget
 	}
 
+	skillKey := harvestSkillKey(entity)
+	currentLevel := int64(0)
+	if s.skills != nil && skillKey != "" {
+		skills, err := s.skills.ListSkills(ctx, userID)
+		if err != nil {
+			return domain.PlayerAction{}, err
+		}
+		for _, skill := range skills {
+			if skill.SkillKey == skillKey {
+				currentLevel = int64(skill.Level)
+				break
+			}
+		}
+		if currentLevel == 0 {
+			currentLevel = 1
+		}
+	}
+
 	action := domain.PlayerAction{
 		ID:             uuid.New(),
 		UserID:         userID,
@@ -113,8 +135,12 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 			"reward_item_key":  harvestRewardItemKey(entity),
 			"reward_quantity":  harvestRewardQuantity(entity),
 			"success_chance":   harvestSuccessChance(entity),
+			"skill_key":        skillKey,
+			"xp_per_reward":    harvestXPPerReward(entity),
 			"ticks_processed":  0,
 			"rewards_granted":  0,
+			"xp_granted":       0,
+			"current_level":    currentLevel,
 			"duration_seconds": int(defaultHarvestDuration / time.Second),
 		},
 	}
@@ -138,6 +164,8 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	itemKey := stringMetadata(action.Metadata, "reward_item_key", defaultHarvestRewardItemKey)
 	rewardQuantity := int64Metadata(action.Metadata, "reward_quantity", defaultHarvestRewardQuantity)
 	successChance := floatMetadata(action.Metadata, "success_chance", defaultHarvestSuccessChance)
+	skillKey := stringMetadata(action.Metadata, "skill_key", defaultHarvestSkillKey)
+	xpPerReward := int64Metadata(action.Metadata, "xp_per_reward", defaultHarvestXPPerReward)
 	tickInterval := time.Duration(action.TickIntervalMs) * time.Millisecond
 	if tickInterval <= 0 {
 		tickInterval = defaultHarvestTickInterval
@@ -145,6 +173,9 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 
 	ticksProcessed := int64Metadata(action.Metadata, "ticks_processed", 0)
 	rewardsGranted := int64Metadata(action.Metadata, "rewards_granted", 0)
+	xpGranted := int64Metadata(action.Metadata, "xp_granted", 0)
+	levelUps := int64Metadata(action.Metadata, "level_ups", 0)
+	currentLevel := int64Metadata(action.Metadata, "current_level", 0)
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
 		if randomUnitFloat() < successChance {
@@ -152,12 +183,28 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 				return nil, err
 			}
 			rewardsGranted += rewardQuantity
+			if s.skills != nil && skillKey != "" && xpPerReward > 0 {
+				skill, err := s.skills.AddXP(ctx, userID, skillKey, xpPerReward*rewardQuantity)
+				if err != nil {
+					return nil, err
+				}
+				xpGranted += xpPerReward * rewardQuantity
+				if currentLevel > 0 && int64(skill.Level) > currentLevel {
+					levelUps += int64(skill.Level) - currentLevel
+				}
+				currentLevel = int64(skill.Level)
+			}
 		}
 		action.NextTickAt = action.NextTickAt.Add(tickInterval)
 	}
 
 	action.Metadata["ticks_processed"] = ticksProcessed
 	action.Metadata["rewards_granted"] = rewardsGranted
+	action.Metadata["xp_granted"] = xpGranted
+	action.Metadata["level_ups"] = levelUps
+	if currentLevel > 0 {
+		action.Metadata["current_level"] = currentLevel
+	}
 	if !now.Before(action.EndsAt) {
 		action.Status = "completed"
 	}
@@ -222,6 +269,14 @@ func harvestRewardQuantity(entity domain.Entity) int64 {
 
 func harvestSuccessChance(entity domain.Entity) float64 {
 	return math.Max(0, math.Min(1, floatMetadata(entity.Metadata, "success_chance", defaultHarvestSuccessChance)))
+}
+
+func harvestSkillKey(entity domain.Entity) string {
+	return stringMetadata(entity.Metadata, "skill_key", defaultHarvestSkillKey)
+}
+
+func harvestXPPerReward(entity domain.Entity) int64 {
+	return int64Metadata(entity.Metadata, "xp_per_reward", defaultHarvestXPPerReward)
 }
 
 func stringMetadata(metadata map[string]any, key string, fallback string) string {

@@ -48,6 +48,11 @@ type InventoryStore interface {
 	AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) error
 }
 
+type SkillStore interface {
+	ListSkills(ctx context.Context, userID uuid.UUID) ([]domain.PlayerSkill, error)
+	AddXP(ctx context.Context, userID uuid.UUID, skillKey string, xp int64) (domain.PlayerSkill, error)
+}
+
 type ActionStore interface {
 	GetActiveAction(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error)
 	CreateAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error)
@@ -62,5 +67,6 @@ type Stores struct {
 	Entities  EntityStore
 	Players   PlayerStore
 	Inventory InventoryStore
+	Skills    SkillStore
 	Actions   ActionStore
 }

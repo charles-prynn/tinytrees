@@ -50,6 +50,9 @@ func defaultResourceEntity(userID uuid.UUID) domain.Entity {
 			"reward_item_key": "wood",
 			"reward_quantity": int64(1),
 			"success_chance":  0.35,
+			"skill_key":       "woodcutting",
+			"xp_per_reward":   int64(25),
+			"required_level":  int64(1),
 		},
 	}
 }

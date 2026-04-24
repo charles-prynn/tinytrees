@@ -148,6 +148,7 @@ type Player struct {
 	Y         int             `json:"y"`
 	Movement  *PlayerMovement `json:"movement,omitempty"`
 	Action    *PlayerAction   `json:"action,omitempty"`
+	Skills    []PlayerSkill   `json:"skills,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
 }
@@ -156,6 +157,14 @@ type InventoryItem struct {
 	UserID    uuid.UUID `json:"user_id"`
 	ItemKey   string    `json:"item_key"`
 	Quantity  int64     `json:"quantity"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type PlayerSkill struct {
+	UserID    uuid.UUID `json:"user_id"`
+	SkillKey  string    `json:"skill_key"`
+	XP        int64     `json:"xp"`
+	Level     int       `json:"level"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

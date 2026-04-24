@@ -63,6 +63,7 @@ class PlayerState {
     required this.y,
     required this.movement,
     required this.action,
+    required this.skills,
     required this.updatedAt,
   });
 
@@ -71,6 +72,7 @@ class PlayerState {
   final int y;
   final PlayerMovement? movement;
   final PlayerAction? action;
+  final List<PlayerSkill> skills;
   final DateTime? updatedAt;
 
   factory PlayerState.fromJson(Map<String, dynamic> json) {
@@ -86,19 +88,39 @@ class PlayerState {
               : null,
       action:
           action is Map<String, dynamic> ? PlayerAction.fromJson(action) : null,
+      skills:
+          (json['skills'] as List<dynamic>? ?? const [])
+              .map(
+                (skill) => PlayerSkill.fromJson(skill as Map<String, dynamic>),
+              )
+              .toList(),
       updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
     );
   }
 
-  PlayerState copyWith({PlayerMovement? movement, PlayerAction? action}) {
+  PlayerState copyWith({
+    PlayerMovement? movement,
+    PlayerAction? action,
+    List<PlayerSkill>? skills,
+  }) {
     return PlayerState(
       userId: userId,
       x: x,
       y: y,
       movement: movement ?? this.movement,
       action: action ?? this.action,
+      skills: skills ?? this.skills,
       updatedAt: updatedAt,
     );
+  }
+
+  PlayerSkill? skillByKey(String skillKey) {
+    for (final skill in skills) {
+      if (skill.skillKey == skillKey) {
+        return skill;
+      }
+    }
+    return null;
   }
 }
 
@@ -158,4 +180,49 @@ class PlayerAction {
     final elapsed = now.difference(startedAt).inMilliseconds;
     return (elapsed / total).clamp(0, 1).toDouble();
   }
+}
+
+class PlayerSkill {
+  const PlayerSkill({
+    required this.skillKey,
+    required this.xp,
+    required this.level,
+    required this.updatedAt,
+  });
+
+  final String skillKey;
+  final int xp;
+  final int level;
+  final DateTime? updatedAt;
+
+  factory PlayerSkill.fromJson(Map<String, dynamic> json) {
+    return PlayerSkill(
+      skillKey: json['skill_key'] as String? ?? '',
+      xp: (json['xp'] as num?)?.toInt() ?? 0,
+      level: (json['level'] as num?)?.toInt() ?? 1,
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
+    );
+  }
+
+  int get nextLevel => level + 1;
+
+  int get currentLevelXP => xpRequiredForLevel(level);
+
+  int get nextLevelXP => xpRequiredForLevel(nextLevel);
+
+  double get progressToNextLevel {
+    final span = nextLevelXP - currentLevelXP;
+    if (span <= 0) {
+      return 1;
+    }
+    final earned = (xp - currentLevelXP).clamp(0, span);
+    return earned / span;
+  }
+}
+
+int xpRequiredForLevel(int level) {
+  if (level <= 1) {
+    return 0;
+  }
+  return level * level * 100 - 100;
 }
