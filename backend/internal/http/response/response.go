@@ -35,6 +35,10 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusUnauthorized
 		code = "unauthorized"
 		message = "authentication is required"
+	case errors.Is(err, service.ErrUsernameTaken):
+		status = http.StatusConflict
+		code = "conflict"
+		message = err.Error()
 	case errors.Is(err, service.ErrEmailTaken):
 		status = http.StatusConflict
 		code = "conflict"

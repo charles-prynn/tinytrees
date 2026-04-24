@@ -73,20 +73,30 @@ func (s *PostgresUserStore) CreateGuest(ctx context.Context) (domain.User, error
 func (s *PostgresUserStore) GetByEmail(ctx context.Context, email string) (domain.User, error) {
 	var user domain.User
 	err := s.pool.QueryRow(ctx, `
-		select id, provider, email, display_name, created_at, updated_at
+		select id, provider, username, email, display_name, created_at, updated_at
 		from users
 		where lower(email) = lower($1)
-	`, email).Scan(&user.ID, &user.Provider, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+	`, email).Scan(&user.ID, &user.Provider, &user.Username, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+	return user, err
+}
+
+func (s *PostgresUserStore) GetByUsername(ctx context.Context, username string) (domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx, `
+		select id, provider, username, email, display_name, created_at, updated_at
+		from users
+		where lower(username) = lower($1)
+	`, username).Scan(&user.ID, &user.Provider, &user.Username, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 
 func (s *PostgresUserStore) GetByID(ctx context.Context, id uuid.UUID) (domain.User, error) {
 	var user domain.User
 	err := s.pool.QueryRow(ctx, `
-		select id, provider, email, display_name, created_at, updated_at
+		select id, provider, username, email, display_name, created_at, updated_at
 		from users
 		where id = $1
-	`, id).Scan(&user.ID, &user.Provider, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+	`, id).Scan(&user.ID, &user.Provider, &user.Username, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 
@@ -100,18 +110,19 @@ func (s *PostgresUserStore) GetPasswordHash(ctx context.Context, id uuid.UUID) (
 	return passwordHash, err
 }
 
-func (s *PostgresUserStore) UpgradeGuest(ctx context.Context, id uuid.UUID, email string, passwordHash string, displayName string) (domain.User, error) {
+func (s *PostgresUserStore) UpgradeGuest(ctx context.Context, id uuid.UUID, username string, email *string, passwordHash string, displayName string) (domain.User, error) {
 	var user domain.User
 	err := s.pool.QueryRow(ctx, `
 		update users
 		set provider = 'local',
-		    email = $2,
-		    password_hash = $3,
-		    display_name = $4,
+		    username = $2,
+		    email = $3,
+		    password_hash = $4,
+		    display_name = $5,
 		    updated_at = now()
 		where id = $1 and provider = 'guest'
-		returning id, provider, email, display_name, created_at, updated_at
-	`, id, email, passwordHash, displayName).Scan(&user.ID, &user.Provider, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
+		returning id, provider, username, email, display_name, created_at, updated_at
+	`, id, username, email, passwordHash, displayName).Scan(&user.ID, &user.Provider, &user.Username, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 

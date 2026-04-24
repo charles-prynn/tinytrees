@@ -45,15 +45,15 @@ func TestAuthServiceUpgradeGuestAndLoginPassword(t *testing.T) {
 		t.Fatalf("LoginGuest returned error: %v", err)
 	}
 
-	upgraded, err := service.UpgradeGuest(context.Background(), login.User.ID, "player@example.com", "password123", "Player")
+	upgraded, err := service.UpgradeGuest(context.Background(), login.User.ID, "player_one", "player@example.com", "password123")
 	if err != nil {
 		t.Fatalf("UpgradeGuest returned error: %v", err)
 	}
-	if upgraded.Provider != "local" || upgraded.Email == nil || *upgraded.Email != "player@example.com" {
+	if upgraded.Provider != "local" || upgraded.Username == nil || *upgraded.Username != "player_one" || upgraded.DisplayName != "player_one" {
 		t.Fatalf("unexpected upgraded user: %+v", upgraded)
 	}
 
-	authResult, err := service.LoginPassword(context.Background(), "player@example.com", "password123")
+	authResult, err := service.LoginPassword(context.Background(), "player_one", "password123")
 	if err != nil {
 		t.Fatalf("LoginPassword returned error: %v", err)
 	}
@@ -82,6 +82,15 @@ func (m *memoryUsers) GetByEmail(_ context.Context, email string) (domain.User, 
 	return domain.User{}, ErrUnauthorized
 }
 
+func (m *memoryUsers) GetByUsername(_ context.Context, username string) (domain.User, error) {
+	for _, user := range m.items {
+		if user.Username != nil && *user.Username == username {
+			return user, nil
+		}
+	}
+	return domain.User{}, ErrUnauthorized
+}
+
 func (m *memoryUsers) GetByID(_ context.Context, id uuid.UUID) (domain.User, error) {
 	for _, user := range m.items {
 		if user.ID == id {
@@ -99,13 +108,14 @@ func (m *memoryUsers) GetPasswordHash(_ context.Context, id uuid.UUID) (string, 
 	return hash, nil
 }
 
-func (m *memoryUsers) UpgradeGuest(_ context.Context, id uuid.UUID, email string, passwordHash string, displayName string) (domain.User, error) {
+func (m *memoryUsers) UpgradeGuest(_ context.Context, id uuid.UUID, username string, email *string, passwordHash string, displayName string) (domain.User, error) {
 	for index, user := range m.items {
 		if user.ID != id {
 			continue
 		}
 		user.Provider = "local"
-		user.Email = &email
+		user.Username = &username
+		user.Email = email
 		user.DisplayName = displayName
 		user.UpdatedAt = time.Now()
 		m.items[index] = user

@@ -9,6 +9,7 @@ import (
 type User struct {
 	ID          uuid.UUID
 	Provider    string
+	Username    *string
 	Email       *string
 	DisplayName string
 	CreatedAt   time.Time

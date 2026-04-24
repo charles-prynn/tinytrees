@@ -60,7 +60,7 @@ class TopBar extends ConsumerWidget {
     required this.onInventoryPressed,
   });
 
-  static const barHeight = 65.0;
+  static const barHeight = 50.0;
   static const _capSourceWidth = 25.0;
   static const _sourceHeight = 130.0;
   static const _segmentCount = 4;

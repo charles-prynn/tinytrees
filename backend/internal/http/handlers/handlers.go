@@ -53,7 +53,7 @@ func (h *Handler) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, service.ErrValidation)
 		return
 	}
-	result, err := h.auth.LoginPassword(r.Context(), body.Email, body.Password)
+	result, err := h.auth.LoginPassword(r.Context(), body.Username, body.Password)
 	if err != nil {
 		response.Error(w, r, err)
 		return
@@ -99,7 +99,7 @@ func (h *Handler) UpgradeGuest(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, service.ErrValidation)
 		return
 	}
-	user, err := h.auth.UpgradeGuest(r.Context(), userID, body.Email, body.Password, body.DisplayName)
+	user, err := h.auth.UpgradeGuest(r.Context(), userID, body.Username, body.Email, body.Password)
 	if err != nil {
 		response.Error(w, r, err)
 		return

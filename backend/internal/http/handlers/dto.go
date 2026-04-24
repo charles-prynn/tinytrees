@@ -12,6 +12,7 @@ import (
 type userDTO struct {
 	ID          string    `json:"id"`
 	Provider    string    `json:"provider"`
+	Username    *string   `json:"username,omitempty"`
 	Email       *string   `json:"email,omitempty"`
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -34,14 +35,14 @@ type refreshRequest struct {
 }
 
 type passwordLoginRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
 type guestUpgradeRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type stateSyncRequest struct {
@@ -185,6 +186,7 @@ func toUserDTO(user domain.User) userDTO {
 	return userDTO{
 		ID:          user.ID.String(),
 		Provider:    user.Provider,
+		Username:    user.Username,
 		Email:       user.Email,
 		DisplayName: user.DisplayName,
 		CreatedAt:   user.CreatedAt,

@@ -18,6 +18,7 @@ import (
 
 var ErrUnauthorized = errors.New("unauthorized")
 var ErrEmailTaken = errors.New("email is already registered")
+var ErrUsernameTaken = errors.New("username is already registered")
 
 type AuthTokens struct {
 	AccessToken           string
@@ -50,8 +51,8 @@ func (s *AuthService) LoginGuest(ctx context.Context) (AuthResult, error) {
 	return s.issueSession(ctx, user)
 }
 
-func (s *AuthService) LoginPassword(ctx context.Context, email string, password string) (AuthResult, error) {
-	user, err := s.users.GetByEmail(ctx, normalizeEmail(email))
+func (s *AuthService) LoginPassword(ctx context.Context, username string, password string) (AuthResult, error) {
+	user, err := s.users.GetByUsername(ctx, normalizeUsername(username))
 	if err != nil {
 		return AuthResult{}, ErrUnauthorized
 	}
@@ -70,17 +71,29 @@ func (s *AuthService) LoginPassword(ctx context.Context, email string, password 
 	return s.issueSession(ctx, user)
 }
 
-func (s *AuthService) UpgradeGuest(ctx context.Context, userID uuid.UUID, email string, password string, displayName string) (domain.User, error) {
-	normalizedEmail, err := validateEmail(email)
+func (s *AuthService) UpgradeGuest(ctx context.Context, userID uuid.UUID, username string, email string, password string) (domain.User, error) {
+	normalizedUsername, err := validateUsername(username)
 	if err != nil {
 		return domain.User{}, err
+	}
+	var normalizedEmail *string
+	if strings.TrimSpace(email) != "" {
+		value, err := validateEmail(email)
+		if err != nil {
+			return domain.User{}, err
+		}
+		normalizedEmail = &value
 	}
 	if err := validatePassword(password); err != nil {
 		return domain.User{}, err
 	}
-	displayName = strings.TrimSpace(displayName)
-	if displayName == "" {
-		displayName = defaultDisplayName(normalizedEmail)
+	if existing, err := s.users.GetByUsername(ctx, normalizedUsername); err == nil && existing.ID != userID {
+		return domain.User{}, ErrUsernameTaken
+	}
+	if normalizedEmail != nil {
+		if existing, err := s.users.GetByEmail(ctx, *normalizedEmail); err == nil && existing.ID != userID {
+			return domain.User{}, ErrEmailTaken
+		}
 	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -88,11 +101,8 @@ func (s *AuthService) UpgradeGuest(ctx context.Context, userID uuid.UUID, email 
 		return domain.User{}, err
 	}
 
-	user, err := s.users.UpgradeGuest(ctx, userID, normalizedEmail, string(passwordHash), displayName)
+	user, err := s.users.UpgradeGuest(ctx, userID, normalizedUsername, normalizedEmail, string(passwordHash), defaultDisplayName(normalizedUsername))
 	if err != nil {
-		if isUniqueViolation(err) {
-			return domain.User{}, ErrEmailTaken
-		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.User{}, ErrValidation
 		}
@@ -189,8 +199,26 @@ func validateEmail(email string) (string, error) {
 	return normalized, nil
 }
 
+func validateUsername(username string) (string, error) {
+	normalized := normalizeUsername(username)
+	if len(normalized) < 3 || len(normalized) > 32 {
+		return "", ErrValidation
+	}
+	for _, r := range normalized {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+		return "", ErrValidation
+	}
+	return normalized, nil
+}
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
 }
 
 func validatePassword(password string) error {
@@ -201,20 +229,8 @@ func validatePassword(password string) error {
 }
 
 func defaultDisplayName(email string) string {
-	local := strings.TrimSpace(strings.SplitN(email, "@", 2)[0])
-	if local == "" {
+	if email == "" {
 		return "Player"
 	}
-	return local
-}
-
-func isUniqueViolation(err error) bool {
-	type sqlStateCarrier interface {
-		SQLState() string
-	}
-	var stateErr sqlStateCarrier
-	if errors.As(err, &stateErr) {
-		return stateErr.SQLState() == "23505"
-	}
-	return false
+	return email
 }

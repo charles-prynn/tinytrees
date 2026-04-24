@@ -104,18 +104,18 @@ Upgrade the current authenticated guest user:
 ```json
 POST /v1/auth/guest/upgrade
 {
+  "username": "player_one",
   "email": "player@example.com",
-  "password": "password123",
-  "display_name": "Player"
+  "password": "password123"
 }
 ```
 
-Login with email/password later:
+Login with username/password later:
 
 ```json
 POST /v1/auth/login
 {
-  "email": "player@example.com",
+  "username": "player_one",
   "password": "password123"
 }
 ```

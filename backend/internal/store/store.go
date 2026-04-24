@@ -12,9 +12,10 @@ import (
 type UserStore interface {
 	CreateGuest(ctx context.Context) (domain.User, error)
 	GetByEmail(ctx context.Context, email string) (domain.User, error)
+	GetByUsername(ctx context.Context, username string) (domain.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.User, error)
 	GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error)
-	UpgradeGuest(ctx context.Context, id uuid.UUID, email string, passwordHash string, displayName string) (domain.User, error)
+	UpgradeGuest(ctx context.Context, id uuid.UUID, username string, email *string, passwordHash string, displayName string) (domain.User, error)
 }
 
 type SessionStore interface {
