@@ -19,8 +19,6 @@ const (
 	wsReadLimit    = 32 * 1024
 )
 
-var wsUpgrader = websocket.Upgrader{}
-
 type wsClientMessage struct {
 	ID      string          `json:"id,omitempty"`
 	Type    string          `json:"type"`
@@ -41,7 +39,16 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			if h.allowWSOrigin == nil {
+				return true
+			}
+			return h.allowWSOrigin(r, r.Header.Get("Origin"))
+		},
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

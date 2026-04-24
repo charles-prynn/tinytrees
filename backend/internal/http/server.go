@@ -17,7 +17,8 @@ import (
 )
 
 func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthService, stateService *service.StateService, mapService *service.MapService, entityService *service.EntityService, playerService *service.PlayerService, actionService *service.ActionService, inventoryService *service.InventoryService) http.Handler {
-	h := handlers.New(authService, stateService, mapService, entityService, playerService, actionService, inventoryService)
+	originAllowed := allowOrigin(cfg.AllowedOrigins)
+	h := handlers.New(authService, stateService, mapService, entityService, playerService, actionService, inventoryService, originAllowed)
 	r := chi.NewRouter()
 
 	r.Use(chimiddleware.RequestID)
@@ -29,7 +30,7 @@ func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthSer
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
 		ExposedHeaders:   []string{"X-Request-ID"},
 		AllowCredentials: true,
-		AllowOriginFunc:  allowOrigin(cfg.AllowedOrigins),
+		AllowOriginFunc:  originAllowed,
 		MaxAge:           300,
 	}))
 

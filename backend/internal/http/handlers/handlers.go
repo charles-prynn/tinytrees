@@ -11,17 +11,27 @@ import (
 )
 
 type Handler struct {
-	auth      *service.AuthService
-	state     *service.StateService
-	maps      *service.MapService
-	entities  *service.EntityService
-	players   *service.PlayerService
-	actions   *service.ActionService
-	inventory *service.InventoryService
+	auth          *service.AuthService
+	state         *service.StateService
+	maps          *service.MapService
+	entities      *service.EntityService
+	players       *service.PlayerService
+	actions       *service.ActionService
+	inventory     *service.InventoryService
+	allowWSOrigin func(r *http.Request, origin string) bool
 }
 
-func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService) *Handler {
-	return &Handler{auth: auth, state: state, maps: maps, entities: entities, players: players, actions: actions, inventory: inventory}
+func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
+	return &Handler{
+		auth:          auth,
+		state:         state,
+		maps:          maps,
+		entities:      entities,
+		players:       players,
+		actions:       actions,
+		inventory:     inventory,
+		allowWSOrigin: allowWSOrigin,
+	}
 }
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
