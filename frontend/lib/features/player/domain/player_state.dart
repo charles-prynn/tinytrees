@@ -99,18 +99,23 @@ class PlayerState {
   }
 
   PlayerState copyWith({
+    int? x,
+    int? y,
     PlayerMovement? movement,
+    bool clearMovement = false,
     PlayerAction? action,
+    bool clearAction = false,
     List<PlayerSkill>? skills,
+    DateTime? updatedAt,
   }) {
     return PlayerState(
       userId: userId,
-      x: x,
-      y: y,
-      movement: movement ?? this.movement,
-      action: action ?? this.action,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      movement: clearMovement ? null : (movement ?? this.movement),
+      action: clearAction ? null : (action ?? this.action),
       skills: skills ?? this.skills,
-      updatedAt: updatedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 

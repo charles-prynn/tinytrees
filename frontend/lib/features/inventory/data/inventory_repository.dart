@@ -1,13 +1,11 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/api/api_response.dart';
-import '../../../core/network/dio_provider.dart';
+import '../../../core/realtime/game_socket.dart';
 import '../../bootstrap/data/bootstrap_repository.dart';
 import '../domain/inventory_item.dart';
 
 final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
-  return InventoryRepository(ref.watch(dioProvider));
+  return InventoryRepository(ref.watch(gameSocketProvider));
 });
 
 final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
@@ -16,13 +14,12 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
 });
 
 class InventoryRepository {
-  const InventoryRepository(this._dio);
+  const InventoryRepository(this._socket);
 
-  final Dio _dio;
+  final GameSocket _socket;
 
   Future<List<InventoryItem>> fetch() async {
-    final response = await _dio.get<Map<String, dynamic>>('/v1/inventory');
-    final data = unwrapData(response.data);
+    final data = await _socket.request('inventory.get');
     final items = data['items'] as List<dynamic>? ?? const [];
     return items
         .map((item) => InventoryItem.fromJson(item as Map<String, dynamic>))

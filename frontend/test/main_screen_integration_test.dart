@@ -52,7 +52,9 @@ void main() {
         .setMockMessageHandler('flutter/assets', null);
   });
 
-  testWidgets('main screen renders idle player summaries', (tester) async {
+  testWidgets('main screen shows the woodcutting and activity top bar', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -76,16 +78,32 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('State version 7'), findsOneWidget);
+    expect(find.text('State version 7'), findsNothing);
+    expect(find.text('Wood 12'), findsNothing);
+    expect(find.text('Woodcutting'), findsOneWidget);
+    expect(find.text('Level 2'), findsOneWidget);
+    expect(find.text('350 / 800 XP'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
-    expect(find.text('Wood 12'), findsOneWidget);
-    expect(
-      find.text('Woodcutting Lv 2 (350 XP, 450 to next)'),
-      findsOneWidget,
-    );
+    expect(find.text('Inventory'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('User'), findsOneWidget);
+    expect(find.text('Guest'), findsOneWidget);
+    expect(find.text('Logout'), findsOneWidget);
+
+    await tester.tap(find.text('Inventory'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Hide'), findsOneWidget);
+    expect(find.byKey(const ValueKey('inventory-drawer')), findsOneWidget);
+    expect(find.text('Inventory'), findsWidgets);
+    expect(find.text('x12'), findsOneWidget);
   });
 
-  testWidgets('main screen renders active harvest state', (tester) async {
+  testWidgets('main screen keeps the woodcutting top bar details', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -121,8 +139,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Harvesting wood'), findsOneWidget);
-    expect(find.text('Woodcutting Lv 1 (25 XP, 275 to next)'), findsOneWidget);
+    expect(find.text('Harvesting wood'), findsNothing);
+    expect(find.text('Woodcutting'), findsOneWidget);
+    expect(find.text('Level 1'), findsOneWidget);
+    expect(find.text('25 / 300 XP'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('Harvesting'), findsOneWidget);
+    expect(find.text('User'), findsOneWidget);
+    expect(find.text('Guest'), findsOneWidget);
+    expect(find.text('Logout'), findsOneWidget);
   });
 }
 
