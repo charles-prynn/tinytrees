@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,6 +41,11 @@ class GameSocket {
     final id = (++_nextID).toString();
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
+    _debugLog('send', {
+      'id': id,
+      'type': type,
+      if (payload != null) 'payload': payload,
+    });
 
     socket.sink.add(
       jsonEncode({
@@ -53,9 +59,14 @@ class GameSocket {
       const Duration(seconds: 10),
       onTimeout: () {
         _pending.remove(id);
+        _debugLog('timeout', {'id': id, 'type': type});
         throw const AppError('Realtime request timed out');
       },
     );
+  }
+
+  Future<void> ensureConnected() async {
+    await request('ping');
   }
 
   Future<void> close() async {
@@ -65,6 +76,7 @@ class GameSocket {
     _subscription = null;
     _connecting = null;
     _failPending(const AppError('Realtime connection closed'));
+    _debugLog('close');
     await subscription?.cancel();
     await socket?.sink.close();
   }
@@ -95,9 +107,9 @@ class GameSocket {
         );
       }
 
-      final socket = WebSocketChannel.connect(
-        Uri.parse(_webSocketURL(tokens.accessToken)),
-      );
+      final uri = Uri.parse(_webSocketURL(tokens.accessToken));
+      _debugLog('connect', {'url': _redactedURL(uri)});
+      final socket = WebSocketChannel.connect(uri);
       _socket = socket;
       _connecting = null;
       _subscription = socket.stream.listen(
@@ -105,18 +117,21 @@ class GameSocket {
         onError: (Object error) {
           _socket = null;
           _subscription = null;
+          _debugLog('error', {'error': error.toString()});
           _failPending(AppError('Realtime connection failed', cause: error));
         },
         onDone: () {
           _socket = null;
           _subscription = null;
+          _debugLog('done');
           _failPending(const AppError('Realtime connection closed'));
         },
         cancelOnError: true,
       );
       return socket;
-    } catch (_) {
+    } catch (error) {
       _connecting = null;
+      _debugLog('connect-failed', {'error': error.toString()});
       rethrow;
     }
   }
@@ -144,13 +159,19 @@ class GameSocket {
 
   void _handleMessage(dynamic event) {
     if (event is! String) {
+      _debugLog('unexpected-event', {
+        'runtime_type': event.runtimeType.toString(),
+      });
       return;
     }
 
     final decoded = jsonDecode(event);
     if (decoded is! Map<String, dynamic>) {
+      _debugLog('unexpected-payload', {'payload': event});
       return;
     }
+
+    _debugLog('receive', decoded);
 
     final id = decoded['id'] as String?;
     if (id == null) {
@@ -164,6 +185,7 @@ class GameSocket {
 
     final error = decoded['error'];
     if (error is Map<String, dynamic>) {
+      _debugLog('request-error', {'id': id, 'error': error});
       completer.completeError(
         AppError(
           error['message'] as String? ?? 'Realtime request failed',
@@ -175,21 +197,45 @@ class GameSocket {
 
     final data = decoded['data'];
     if (data is Map<String, dynamic>) {
+      _debugLog('request-ok', {'id': id, 'data': data});
       completer.complete(data);
       return;
     }
 
+    _debugLog('invalid-response', {'id': id, 'payload': decoded});
     completer.completeError(
       const AppError('Realtime response did not include an object payload'),
     );
   }
 
   void _failPending(Object error) {
+    _debugLog('fail-pending', {
+      'count': _pending.length,
+      'error': error.toString(),
+    });
     for (final completer in _pending.values) {
       if (!completer.isCompleted) {
         completer.completeError(error);
       }
     }
     _pending.clear();
+  }
+
+  void _debugLog(String event, [Map<String, Object?> details = const {}]) {
+    if (!_config.debugFps) {
+      return;
+    }
+    developer.log(
+      jsonEncode({'event': event, if (details.isNotEmpty) 'details': details}),
+      name: 'game_socket',
+    );
+  }
+
+  String _redactedURL(Uri uri) {
+    final queryParameters = Map<String, String>.from(uri.queryParameters);
+    if (queryParameters.containsKey('access_token')) {
+      queryParameters['access_token'] = '<redacted>';
+    }
+    return uri.replace(queryParameters: queryParameters).toString();
   }
 }

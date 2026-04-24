@@ -18,20 +18,37 @@ class AppConfig {
   final bool debugFps;
 
   factory AppConfig.fromEnvironment() {
-    return const AppConfig(
-      apiBaseUrl: String.fromEnvironment(
-        'API_BASE_URL',
-        defaultValue: 'http://localhost:8080',
-      ),
-      websocketBaseUrl: String.fromEnvironment(
-        'WEBSOCKET_BASE_URL',
-        defaultValue: 'ws://localhost:8080',
-      ),
-      environment: String.fromEnvironment(
+    const apiBaseUrl = String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:8080',
+    );
+    const configuredWebsocketBaseUrl = String.fromEnvironment(
+      'WEBSOCKET_BASE_URL',
+      defaultValue: '',
+    );
+
+    return AppConfig(
+      apiBaseUrl: apiBaseUrl,
+      websocketBaseUrl:
+          configuredWebsocketBaseUrl.isNotEmpty
+              ? configuredWebsocketBaseUrl
+              : _deriveWebSocketBaseURL(apiBaseUrl),
+      environment: const String.fromEnvironment(
         'APP_ENV',
         defaultValue: 'development',
       ),
-      debugFps: bool.fromEnvironment('DEBUG_FPS'),
+      debugFps: const bool.fromEnvironment('DEBUG_FPS'),
     );
+  }
+
+  static String _deriveWebSocketBaseURL(String apiBaseUrl) {
+    final uri = Uri.parse(apiBaseUrl);
+    final scheme =
+        uri.scheme == 'https'
+            ? 'wss'
+            : uri.scheme == 'http'
+            ? 'ws'
+            : uri.scheme;
+    return uri.replace(scheme: scheme).toString();
   }
 }
