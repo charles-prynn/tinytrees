@@ -6,7 +6,7 @@ Flutter starter app with Riverpod state management, Dio networking, secure token
 
 ```sh
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://localhost:8080
+flutter run --dart-define=API_BASE_URL=http://localhost:8080 --dart-define=WEBSOCKET_BASE_URL=ws://localhost:8080
 ```
 
 ## Structure

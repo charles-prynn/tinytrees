@@ -21,7 +21,7 @@ const (
 func Auth(authService *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := bearerToken(r.Header.Get("Authorization"))
+			token := accessToken(r)
 			if token == "" {
 				response.Error(w, r, service.ErrUnauthorized)
 				return
@@ -36,6 +36,16 @@ func Auth(authService *service.AuthService) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func accessToken(r *http.Request) string {
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		return token
+	}
+	if isWebSocketRequest(r) {
+		return strings.TrimSpace(r.URL.Query().Get("access_token"))
+	}
+	return ""
 }
 
 func UserID(ctx context.Context) (uuid.UUID, bool) {
@@ -54,4 +64,10 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
+}
+
+func isWebSocketRequest(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Connection"), "Upgrade") ||
+		strings.EqualFold(r.Header.Get("Upgrade"), "websocket") ||
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }

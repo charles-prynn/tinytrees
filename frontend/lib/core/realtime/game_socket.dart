@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config/app_config.dart';
 import '../errors/app_error.dart';
@@ -26,8 +27,9 @@ class GameSocket {
   final TokenStorage _tokenStorage;
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
 
-  WebSocket? _socket;
-  Future<WebSocket>? _connecting;
+  WebSocketChannel? _socket;
+  Future<WebSocketChannel>? _connecting;
+  StreamSubscription? _subscription;
   int _nextID = 0;
 
   Future<Map<String, dynamic>> request(
@@ -39,7 +41,7 @@ class GameSocket {
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
 
-    socket.add(
+    socket.sink.add(
       jsonEncode({
         'id': id,
         'type': type,
@@ -58,15 +60,18 @@ class GameSocket {
 
   Future<void> close() async {
     final socket = _socket;
+    final subscription = _subscription;
     _socket = null;
+    _subscription = null;
     _connecting = null;
     _failPending(const AppError('Realtime connection closed'));
-    await socket?.close();
+    await subscription?.cancel();
+    await socket?.sink.close();
   }
 
-  Future<WebSocket> _connect() {
+  Future<WebSocketChannel> _connect() {
     final existing = _socket;
-    if (existing != null && existing.readyState == WebSocket.open) {
+    if (existing != null) {
       return Future.value(existing);
     }
 
@@ -80,7 +85,7 @@ class GameSocket {
     return next;
   }
 
-  Future<WebSocket> _open() async {
+  Future<WebSocketChannel> _open() async {
     try {
       final tokens = await _tokenStorage.read();
       if (tokens == null) {
@@ -90,20 +95,21 @@ class GameSocket {
         );
       }
 
-      final socket = await WebSocket.connect(
-        _webSocketURL(),
-        headers: {'Authorization': 'Bearer ${tokens.accessToken}'},
+      final socket = WebSocketChannel.connect(
+        Uri.parse(_webSocketURL(tokens.accessToken)),
       );
       _socket = socket;
       _connecting = null;
-      socket.listen(
+      _subscription = socket.stream.listen(
         _handleMessage,
         onError: (Object error) {
           _socket = null;
+          _subscription = null;
           _failPending(AppError('Realtime connection failed', cause: error));
         },
         onDone: () {
           _socket = null;
+          _subscription = null;
           _failPending(const AppError('Realtime connection closed'));
         },
         cancelOnError: true,
@@ -115,7 +121,7 @@ class GameSocket {
     }
   }
 
-  String _webSocketURL() {
+  String _webSocketURL(String accessToken) {
     final base = Uri.parse(_config.websocketBaseUrl);
     final scheme =
         base.scheme == 'https'
@@ -123,7 +129,17 @@ class GameSocket {
             : base.scheme == 'http'
             ? 'ws'
             : base.scheme;
-    return base.replace(scheme: scheme, path: '/v1/ws', query: null).toString();
+    final queryParameters = <String, String>{};
+    if (kIsWeb) {
+      queryParameters['access_token'] = accessToken;
+    }
+    return base
+        .replace(
+          scheme: scheme,
+          path: '/v1/ws',
+          queryParameters: queryParameters.isEmpty ? null : queryParameters,
+        )
+        .toString();
   }
 
   void _handleMessage(dynamic event) {
