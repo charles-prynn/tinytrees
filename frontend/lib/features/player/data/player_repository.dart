@@ -1,17 +1,11 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/api/api_response.dart';
-import '../../../core/network/dio_provider.dart';
 import '../../../core/realtime/game_socket.dart';
 import '../../bootstrap/data/bootstrap_repository.dart';
 import '../domain/player_state.dart';
 
 final playerRepositoryProvider = Provider<PlayerRepository>((ref) {
-  return PlayerRepository(
-    ref.watch(dioProvider),
-    ref.watch(gameSocketProvider),
-  );
+  return PlayerRepository(ref.watch(gameSocketProvider));
 });
 
 final playerStateProvider = FutureProvider<PlayerState>((ref) async {
@@ -20,14 +14,12 @@ final playerStateProvider = FutureProvider<PlayerState>((ref) async {
 });
 
 class PlayerRepository {
-  const PlayerRepository(this._dio, this._socket);
+  const PlayerRepository(this._socket);
 
-  final Dio _dio;
   final GameSocket _socket;
 
   Future<PlayerState> fetch() async {
-    final response = await _dio.get<Map<String, dynamic>>('/v1/player');
-    final data = unwrapData(response.data);
+    final data = await _socket.request('player.get');
     return PlayerState.fromJson(data['player'] as Map<String, dynamic>);
   }
 
