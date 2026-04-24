@@ -11,7 +11,6 @@ import (
 	"starter/backend/internal/store"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const defaultPlayerSpeedTilesPerSecond = 2.0
@@ -42,30 +41,27 @@ func (s *PlayerService) SetActionService(actions *ActionService) {
 }
 
 func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Player, error) {
-	player, err := s.players.GetPlayer(ctx, userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		player, err = s.players.CreatePlayer(ctx, defaultPlayer(userID))
-		if err != nil {
-			return domain.Player{}, err
-		}
-		return s.attachActiveAction(ctx, userID, player)
-	}
+	lifecycle, err := s.resolveLifecycle(ctx, userID)
 	if err != nil {
 		return domain.Player{}, err
 	}
-	player, err = s.resolveCompletedMovement(ctx, player)
-	if err != nil {
-		return domain.Player{}, err
-	}
-	return s.attachActiveAction(ctx, userID, player)
+	lifecycle.player.Action = lifecycle.action
+	return s.attachSkills(ctx, userID, lifecycle.player)
 }
 
 func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int, targetY int) (domain.Player, error) {
-	if s.actions != nil {
+	lifecycle, err := s.resolveLifecycle(ctx, userID)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	if lifecycle.state == playerStateHarvesting && s.actions != nil {
 		if err := s.actions.CancelActive(ctx, userID); err != nil {
 			return domain.Player{}, err
 		}
+		lifecycle.action = nil
+		lifecycle.state = playerStateIdle
 	}
+
 	tileMap, err := s.maps.GetTileMap(ctx, userID)
 	if err != nil {
 		return domain.Player{}, err
@@ -81,12 +77,8 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 		return domain.Player{}, ErrInvalidMoveTarget
 	}
 
-	player, err := s.Get(ctx, userID)
-	if err != nil {
-		return domain.Player{}, err
-	}
-
 	now := s.now()
+	player := lifecycle.player
 	from := currentPlayerPoint(player, now)
 	delete(blockedTiles, from)
 	path := fastestPath(tileMap, blockedTiles, from, target)

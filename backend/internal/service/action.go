@@ -66,14 +66,11 @@ func (s *ActionService) CancelActive(ctx context.Context, userID uuid.UUID) erro
 }
 
 func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) (domain.PlayerAction, error) {
-	if _, err := s.Resolve(ctx, userID); err != nil {
-		return domain.PlayerAction{}, err
-	}
-	active, err := s.actions.GetActiveAction(ctx, userID)
+	activeAction, err := s.Resolve(ctx, userID)
 	if err != nil {
 		return domain.PlayerAction{}, err
 	}
-	if active != nil {
+	if activeAction != nil {
 		return domain.PlayerAction{}, ErrActionInProgress
 	}
 
@@ -82,12 +79,12 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 	if err != nil {
 		return domain.PlayerAction{}, err
 	}
-	if player.Movement != nil {
-		if now.Before(player.Movement.ArrivesAt) {
+	if movement := player.Movement; movement != nil {
+		if now.Before(movement.ArrivesAt) {
 			return domain.PlayerAction{}, ErrPlayerIsMoving
 		}
-		player.X = player.Movement.TargetX
-		player.Y = player.Movement.TargetY
+		player.X = movement.TargetX
+		player.Y = movement.TargetY
 		player.Movement = nil
 		if _, err := s.players.SavePlayer(ctx, player); err != nil {
 			return domain.PlayerAction{}, err
