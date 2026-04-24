@@ -89,6 +89,7 @@ void main() {
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('User'), findsOneWidget);
     expect(find.text('Guest'), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
 
     await tester.tap(find.text('Inventory'));
@@ -147,7 +148,29 @@ void main() {
     expect(find.text('Harvesting'), findsOneWidget);
     expect(find.text('User'), findsOneWidget);
     expect(find.text('Guest'), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
+  });
+
+  testWidgets('guest register popup opens in the center overlay', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_buildTestApp(player: _playerState()));
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.text('Register'));
+    await tester.pump();
+
+    expect(find.text('Upgrade your guest account with a username and password.'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Password'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.text('Register'), findsWidgets);
   });
 }
 
@@ -158,7 +181,7 @@ Widget _buildTestApp({required PlayerState player}) {
       tileMapProvider.overrideWith((ref) async => _tileMap),
       worldEntitiesProvider.overrideWith((ref) async => _entities),
       playerStateProvider.overrideWith((ref) async => player),
-      inventoryProvider.overrideWith((ref) async => _inventory),
+      inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
       stateSnapshotProvider.overrideWith((ref) async => _snapshot),
     ],
     child: const MaterialApp(home: MainScreen()),
@@ -198,12 +221,7 @@ const _tileMap = TileMap(
   width: 4,
   height: 4,
   tileSize: 32,
-  tiles: [
-    1, 1, 1, 1,
-    1, 1, 1, 1,
-    1, 1, 1, 1,
-    1, 1, 1, 1,
-  ],
+  tiles: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   updatedAt: null,
 );
 

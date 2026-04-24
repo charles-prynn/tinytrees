@@ -27,6 +27,8 @@ class GameSocket {
   final AppConfig _config;
   final TokenStorage _tokenStorage;
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
+  final StreamController<GameSocketMessage> _events =
+      StreamController<GameSocketMessage>.broadcast();
 
   WebSocketChannel? _socket;
   Future<WebSocketChannel>? _connecting;
@@ -79,6 +81,13 @@ class GameSocket {
     _debugLog('close');
     await subscription?.cancel();
     await socket?.sink.close();
+    await _events.close();
+  }
+
+  Stream<Map<String, dynamic>> messagesOfType(String type) {
+    return _events.stream
+        .where((event) => event.type == type)
+        .map((event) => event.data);
   }
 
   Future<WebSocketChannel> _connect() {
@@ -173,6 +182,12 @@ class GameSocket {
 
     _debugLog('receive', decoded);
 
+    final type = decoded['type'] as String?;
+    final data = decoded['data'];
+    if (type != null && data is Map<String, dynamic>) {
+      _events.add(GameSocketMessage(type: type, data: data));
+    }
+
     final id = decoded['id'] as String?;
     if (id == null) {
       return;
@@ -195,7 +210,6 @@ class GameSocket {
       return;
     }
 
-    final data = decoded['data'];
     if (data is Map<String, dynamic>) {
       _debugLog('request-ok', {'id': id, 'data': data});
       completer.complete(data);
@@ -238,4 +252,11 @@ class GameSocket {
     }
     return uri.replace(queryParameters: queryParameters).toString();
   }
+}
+
+class GameSocketMessage {
+  const GameSocketMessage({required this.type, required this.data});
+
+  final String type;
+  final Map<String, dynamic> data;
 }

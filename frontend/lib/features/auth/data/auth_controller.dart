@@ -12,6 +12,29 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     return ref.watch(authRepositoryProvider).restoreOrLoginGuest();
   }
 
+  Future<void> upgradeGuest({
+    required String username,
+    required String password,
+  }) async {
+    final repository = ref.read(authRepositoryProvider);
+    final previous = state.value;
+    try {
+      state = const AsyncLoading();
+      final session = await repository.upgradeGuest(
+        username: username,
+        password: password,
+      );
+      state = AsyncData(session);
+    } catch (error, stackTrace) {
+      if (previous != null) {
+        state = AsyncData(previous);
+      } else {
+        state = AsyncError(error, stackTrace);
+      }
+      rethrow;
+    }
+  }
+
   Future<void> logout() async {
     final repository = ref.read(authRepositoryProvider);
     state = const AsyncLoading();

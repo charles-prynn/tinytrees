@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"starter/backend/internal/http/middleware"
@@ -54,6 +56,17 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	conn.SetReadLimit(wsReadLimit)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	var writeMu sync.Mutex
+	write := func(message wsServerMessage) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return writeWebSocketJSON(conn, message)
+	}
+
+	go h.pushRealtimeUpdates(ctx, userID, write)
 
 	for {
 		var message wsClientMessage
@@ -65,10 +78,75 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		reply := h.handleWebSocketMessage(r, userID, message)
-		if err := writeWebSocketJSON(conn, reply); err != nil {
+		if err := write(reply); err != nil {
 			return
 		}
 	}
+}
+
+func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, write func(wsServerMessage) error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var lastPlayerJSON []byte
+	var lastActionJSON []byte
+	var lastInventoryJSON []byte
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			player, err := h.players.Get(ctx, userID)
+			if err != nil {
+				continue
+			}
+			playerJSON, err := json.Marshal(toPlayerDTO(player))
+			if err == nil && !jsonEqual(lastPlayerJSON, playerJSON) {
+				if err := write(wsServerMessage{
+					Type: "player.updated",
+					Data: map[string]any{"player": toPlayerDTO(player)},
+				}); err != nil {
+					return
+				}
+				lastPlayerJSON = playerJSON
+			}
+
+			actionJSON, err := json.Marshal(toActionDTO(player.Action))
+			if err == nil && !jsonEqual(lastActionJSON, actionJSON) {
+				if err := write(wsServerMessage{
+					Type: "action.updated",
+					Data: map[string]any{"action": toActionDTO(player.Action)},
+				}); err != nil {
+					return
+				}
+				lastActionJSON = actionJSON
+			}
+
+			items, err := h.inventory.List(ctx, userID)
+			if err != nil {
+				continue
+			}
+			inventoryDTOs := toInventoryDTOs(items)
+			inventoryJSON, err := json.Marshal(inventoryDTOs)
+			if err == nil && !jsonEqual(lastInventoryJSON, inventoryJSON) {
+				if err := write(wsServerMessage{
+					Type: "inventory.updated",
+					Data: map[string]any{"items": inventoryDTOs},
+				}); err != nil {
+					return
+				}
+				lastInventoryJSON = inventoryJSON
+			}
+		}
+	}
+}
+
+func jsonEqual(a []byte, b []byte) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return string(a) == string(b)
 }
 
 func (h *Handler) handleWebSocketMessage(r *http.Request, userID uuid.UUID, message wsClientMessage) wsServerMessage {

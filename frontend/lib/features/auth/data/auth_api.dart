@@ -35,6 +35,22 @@ class AuthApi {
     await _dio.post<Map<String, dynamic>>('/v1/auth/logout');
   }
 
+  Future<AppUser> upgradeGuest({
+    required String username,
+    required String password,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/auth/guest/upgrade',
+      data: {
+        'username': username,
+        'email': '',
+        'password': password,
+      },
+    );
+    final data = unwrapData(response.data);
+    return AppUser.fromJson(data['user'] as Map<String, dynamic>);
+  }
+
   TokenPair _parseTokens(Map<String, dynamic> json) {
     return TokenPair(
       accessToken: json['access_token'] as String,

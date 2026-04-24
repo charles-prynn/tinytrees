@@ -44,4 +44,15 @@ class AuthRepository {
       await _tokenStorage.clear();
     }
   }
+
+  Future<AuthSession> upgradeGuest({
+    required String username,
+    required String password,
+  }) async {
+    final user = await _api.upgradeGuest(
+      username: username,
+      password: password,
+    );
+    return AuthSession(user: user);
+  }
 }

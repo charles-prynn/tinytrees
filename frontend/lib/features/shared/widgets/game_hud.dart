@@ -2,22 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/data/auth_controller.dart';
+import '../../auth/domain/auth_session.dart';
 import '../../inventory/data/inventory_repository.dart';
 import '../../inventory/domain/inventory_item.dart';
 import '../../player/application/player_controller.dart';
 import '../../player/domain/player_state.dart';
+import 'registration_popup.dart';
 
 class GameHud extends ConsumerWidget {
   const GameHud({
     super.key,
     required this.inventoryOpen,
+    required this.registrationOpen,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
+    required this.onRegistrationPressed,
+    required this.onRegistrationClosed,
   });
 
   final bool inventoryOpen;
+  final bool registrationOpen;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
+  final VoidCallback onRegistrationPressed;
+  final VoidCallback onRegistrationClosed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,6 +38,7 @@ class GameHud extends ConsumerWidget {
             child: TopBar(
               inventoryOpen: inventoryOpen,
               onInventoryPressed: onInventoryPressed,
+              onRegistrationPressed: onRegistrationPressed,
             ),
           ),
         ),
@@ -48,6 +57,8 @@ class GameHud extends ConsumerWidget {
             ),
           ),
         ),
+        if (registrationOpen)
+          RegistrationPopup(onClose: onRegistrationClosed),
       ],
     );
   }
@@ -58,6 +69,7 @@ class TopBar extends ConsumerWidget {
     super.key,
     required this.inventoryOpen,
     required this.onInventoryPressed,
+    required this.onRegistrationPressed,
   });
 
   static const barHeight = 50.0;
@@ -68,6 +80,7 @@ class TopBar extends ConsumerWidget {
 
   final bool inventoryOpen;
   final VoidCallback onInventoryPressed;
+  final VoidCallback onRegistrationPressed;
 
   double get _capWidth => barHeight * (_capSourceWidth / _sourceHeight);
 
@@ -151,6 +164,7 @@ class TopBar extends ConsumerWidget {
                               : UserTopBarSection(
                                 showDivider: true,
                                 auth: auth,
+                                onRegisterPressed: onRegistrationPressed,
                                 onLogout:
                                     () =>
                                         ref
@@ -567,11 +581,13 @@ class UserTopBarSection extends StatelessWidget {
     super.key,
     required this.showDivider,
     required this.auth,
+    required this.onRegisterPressed,
     required this.onLogout,
   });
 
   final bool showDivider;
-  final AsyncValue auth;
+  final AsyncValue<AuthSession?> auth;
+  final VoidCallback onRegisterPressed;
   final VoidCallback onLogout;
 
   @override
@@ -595,6 +611,8 @@ class UserTopBarSection extends StatelessWidget {
                 data:
                     (value) => UserDetails(
                       username: value?.user.displayName ?? 'Guest',
+                      showRegister: value?.user.provider == 'guest',
+                      onRegister: onRegisterPressed,
                       onLogout: onLogout,
                     ),
                 loading:
@@ -608,8 +626,10 @@ class UserTopBarSection extends StatelessWidget {
                       ],
                     ),
                 error:
-                    (_, _) =>
-                        UserDetails(username: 'Offline', onLogout: onLogout),
+                    (_, _) => UserDetails(
+                      username: 'Offline',
+                      onLogout: onLogout,
+                    ),
               ),
             ),
           ),
@@ -811,10 +831,14 @@ class UserDetails extends StatelessWidget {
   const UserDetails({
     super.key,
     required this.username,
+    this.showRegister = false,
+    this.onRegister,
     required this.onLogout,
   });
 
   final String username;
+  final bool showRegister;
+  final VoidCallback? onRegister;
   final VoidCallback onLogout;
 
   @override
@@ -847,33 +871,51 @@ class UserDetails extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        SizedBox(
-          height: 14,
-          child: OutlinedButton(
-            onPressed: onLogout,
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-              minimumSize: const Size(0, 14),
-              side: const BorderSide(color: Color(0xAA7C6B48), width: 0.8),
-              backgroundColor: const Color(0x33150F08),
-              foregroundColor: const Color(0xFFE6D9C2),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            child: const Text(
-              'Logout',
-              style: TextStyle(
-                fontSize: 6.7,
-                fontWeight: FontWeight.w700,
-                height: 1,
-              ),
-            ),
-          ),
+        Row(
+          children: [
+            if (showRegister) ...[
+              _UserActionButton(label: 'Register', onPressed: onRegister),
+              const SizedBox(width: 4),
+            ],
+            _UserActionButton(label: 'Logout', onPressed: onLogout),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _UserActionButton extends StatelessWidget {
+  const _UserActionButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 14,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+          minimumSize: const Size(0, 14),
+          side: const BorderSide(color: Color(0xAA7C6B48), width: 0.8),
+          backgroundColor: const Color(0x33150F08),
+          foregroundColor: const Color(0xFFE6D9C2),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 6.7,
+            fontWeight: FontWeight.w700,
+            height: 1,
+          ),
+        ),
+      ),
     );
   }
 }

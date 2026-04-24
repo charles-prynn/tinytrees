@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
 import '../entities/domain/world_entity.dart';
-import '../inventory/data/inventory_repository.dart';
 import '../map/application/map_controller.dart';
 import '../map/domain/tile_map.dart';
 import '../player/application/player_controller.dart';
@@ -31,6 +31,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   int _interactionSequence = 0;
   Timer? _actionPoller;
   bool _inventoryOpen = false;
+  bool _registrationOpen = false;
 
   @override
   void initState() {
@@ -67,6 +68,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         _syncActionPoller(value.action);
       });
     });
+    ref.listenManual(authControllerProvider, (_, next) {
+      next.whenData((value) {
+        if (value?.user.provider != 'guest' && _registrationOpen && mounted) {
+          setState(() {
+            _registrationOpen = false;
+          });
+        }
+      });
+    });
   }
 
   @override
@@ -100,8 +110,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
           GameHud(
             inventoryOpen: _inventoryOpen,
+            registrationOpen: _registrationOpen,
             onInventoryPressed: _toggleInventory,
             onInventoryClosed: _toggleInventory,
+            onRegistrationPressed: _openRegistration,
+            onRegistrationClosed: _closeRegistration,
           ),
         ],
       ),
@@ -151,6 +164,24 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     });
   }
 
+  void _openRegistration() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _registrationOpen = true;
+    });
+  }
+
+  void _closeRegistration() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _registrationOpen = false;
+    });
+  }
+
   Future<void> _moveAndHarvest(EntityInteractionTarget target) async {
     final sequence = ++_interactionSequence;
     final controller = ref.read(playerControllerProvider.notifier);
@@ -175,7 +206,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     if (!mounted || !started || sequence != _interactionSequence) {
       return;
     }
-    ref.invalidate(inventoryProvider);
   }
 
   void _syncActionPoller(PlayerAction? action) {
@@ -191,7 +221,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       if (!mounted) {
         return;
       }
-      ref.invalidate(inventoryProvider);
       ref.invalidate(playerControllerProvider);
       if (!DateTime.now().toUtc().isBefore(action.endsAt)) {
         _actionPoller?.cancel();

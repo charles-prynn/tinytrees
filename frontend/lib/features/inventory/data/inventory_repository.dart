@@ -8,9 +8,20 @@ final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
   return InventoryRepository(ref.watch(gameSocketProvider));
 });
 
-final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
+final inventoryProvider = StreamProvider<List<InventoryItem>>((ref) async* {
   await ref.watch(appBootstrapProvider.future);
-  return ref.watch(inventoryRepositoryProvider).fetch();
+  final repository = ref.watch(inventoryRepositoryProvider);
+  final socket = ref.watch(gameSocketProvider);
+
+  await socket.ensureConnected();
+  yield await repository.fetch();
+
+  yield* socket.messagesOfType('inventory.updated').map((data) {
+    final items = data['items'] as List<dynamic>? ?? const [];
+    return items
+        .map((item) => InventoryItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  });
 });
 
 class InventoryRepository {
