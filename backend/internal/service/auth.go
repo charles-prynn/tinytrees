@@ -222,7 +222,7 @@ func normalizeUsername(username string) string {
 }
 
 func validatePassword(password string) error {
-	if len(password) < 8 {
+	if len(password) < 4 {
 		return ErrValidation
 	}
 	return nil
