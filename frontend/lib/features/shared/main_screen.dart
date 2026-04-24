@@ -115,13 +115,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                   return;
                 }
                 _interactionSequence++;
+                _game.showWalkIconAt(tile);
                 final moved = await ref
                     .read(playerControllerProvider.notifier)
                     .moveTo(x: tile.x, y: tile.y);
                 if (!mounted || !moved) {
                   return;
                 }
-                _game.showWalkIconAt(tile);
               },
               child: GameWidget(game: _game),
             ),
@@ -162,6 +162,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Future<void> _moveAndHarvest(EntityInteractionTarget target) async {
     final sequence = ++_interactionSequence;
     final controller = ref.read(playerControllerProvider.notifier);
+    _game.showWalkIconAt(target.tile);
     final moved = await controller.moveTo(x: target.tile.x, y: target.tile.y);
     if (!mounted || !moved || sequence != _interactionSequence) {
       return;

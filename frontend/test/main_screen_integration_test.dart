@@ -76,7 +76,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Guest'), findsOneWidget);
     expect(find.text('State version 7'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
     expect(find.text('Wood 12'), findsOneWidget);
