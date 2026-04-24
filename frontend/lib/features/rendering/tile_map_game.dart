@@ -178,7 +178,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   set player(PlayerState? value) {
     final currentPosition = _playerPosition();
     _player = value;
-    _playerVisualMotion = _visualMotionFrom(value, currentPosition);
+    _playerVisualMotion = _visualMotionFrom(
+      next: value,
+      currentPosition: currentPosition,
+      now: DateTime.now().toUtc(),
+    );
   }
 
   set currentMap(TileMap? value) {
@@ -891,6 +895,10 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
 
   _PlayerPose? _serverPlayerPose(DateTime now) {
     final current = player;
+    return _serverPlayerPoseFor(current, now);
+  }
+
+  _PlayerPose? _serverPlayerPoseFor(PlayerState? current, DateTime now) {
     if (current == null) {
       return null;
     }
@@ -979,11 +987,27 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   _PlayerVisualMotion? _visualMotionFrom(
-    PlayerState? next,
-    Offset? currentPosition,
+    {required PlayerState? next,
+    required Offset? currentPosition,
+    required DateTime now,}
   ) {
+    if (next?.action != null) {
+      return null;
+    }
+
     final movement = next?.movement;
     if (movement == null || movement.path.isEmpty || currentPosition == null) {
+      return null;
+    }
+
+    final serverPose = _serverPlayerPoseFor(next, now);
+    if (serverPose == null) {
+      return null;
+    }
+
+    // If the authoritative pose is no longer close to the rendered pose,
+    // snap back to server state instead of animating from stale local motion.
+    if ((serverPose.position - currentPosition).distance > 0.75) {
       return null;
     }
 

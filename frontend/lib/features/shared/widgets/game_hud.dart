@@ -61,6 +61,7 @@ class TopBar extends ConsumerWidget {
   });
 
   static const barHeight = 50.0;
+  static const contentInset = 4.0;
   static const _capSourceWidth = 25.0;
   static const _sourceHeight = 130.0;
   static const _segmentCount = 4;
@@ -122,9 +123,9 @@ class TopBar extends ConsumerWidget {
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   _capWidth + 8,
-                  6,
+                  contentInset,
                   _capWidth + 8,
-                  6,
+                  contentInset,
                 ),
                 child: Row(
                   children: List.generate(
@@ -210,14 +211,14 @@ class InventoryTopBarSection extends StatelessWidget {
                           'Bag',
                           style: TextStyle(
                             color: Color(0xFFDBCDB4),
-                            fontSize: 7.5,
+                            fontSize: 6.4,
                             fontWeight: FontWeight.w700,
                             height: 1,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -229,12 +230,12 @@ class InventoryTopBarSection extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: Color(0xFFE3D8C3),
-                              fontSize: 10.5,
+                              fontSize: 9,
                               fontWeight: FontWeight.w700,
                               height: 1,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Text(
                             inventoryOpen ? 'Hide' : 'Open',
                             maxLines: 1,
@@ -244,7 +245,7 @@ class InventoryTopBarSection extends StatelessWidget {
                                   inventoryOpen
                                       ? const Color(0xFFE2BF63)
                                       : const Color(0xFFDBCDB4),
-                              fontSize: 9.2,
+                              fontSize: 8,
                               fontWeight: FontWeight.w700,
                               height: 1,
                             ),
@@ -325,9 +326,9 @@ class InventoryDrawer extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 _capWidth + 14,
-                8,
+                6,
                 _capWidth + 14,
-                8,
+                6,
               ),
               child: Row(
                 children: [
@@ -335,12 +336,12 @@ class InventoryDrawer extends StatelessWidget {
                     'Inventory',
                     style: TextStyle(
                       color: Color(0xFFE3D8C3),
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
                       height: 1,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: inventory.when(
                       data: (items) => InventoryGrid(items: items),
@@ -348,7 +349,7 @@ class InventoryDrawer extends StatelessWidget {
                       error: (_, _) => const InventoryGridError(),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   InventoryCloseButton(onPressed: onClose),
                 ],
               ),
@@ -368,13 +369,13 @@ class InventoryCloseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 24,
-      height: 24,
+      width: 20,
+      height: 20,
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           padding: EdgeInsets.zero,
-          minimumSize: const Size(24, 24),
+          minimumSize: const Size(20, 20),
           side: const BorderSide(color: Color(0xAA7C6B48), width: 0.8),
           backgroundColor: const Color(0x33150F08),
           foregroundColor: const Color(0xFFE3D8C3),
@@ -383,7 +384,7 @@ class InventoryCloseButton extends StatelessWidget {
         child: const Text(
           '×',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 10,
             fontWeight: FontWeight.w700,
             height: 1,
           ),
@@ -406,7 +407,7 @@ class InventoryGrid extends StatelessWidget {
         8,
         (index) => Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: index == 7 ? 0 : 8),
+            padding: EdgeInsets.only(right: index == 7 ? 0 : 5),
             child: InventorySlot(
               item: index < visibleItems.length ? visibleItems[index] : null,
             ),
@@ -426,43 +427,43 @@ class InventoryGridLoading extends StatelessWidget {
       children: [
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 5),
             child: InventorySlot(),
           ),
         ),
@@ -483,7 +484,7 @@ class InventoryGridError extends StatelessWidget {
         'Inventory offline',
         style: TextStyle(
           color: Color(0xFFE3D8C3),
-          fontSize: 9,
+          fontSize: 8,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -515,7 +516,7 @@ class InventorySlot extends StatelessWidget {
         border: Border.all(color: const Color(0x995B503A), width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(2),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: const Color(0x22110D08),
@@ -527,8 +528,8 @@ class InventorySlot extends StatelessWidget {
                   ? const SizedBox.expand()
                   : Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 3,
+                      horizontal: 3,
+                      vertical: 2,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -538,7 +539,7 @@ class InventorySlot extends StatelessWidget {
                           initials,
                           style: const TextStyle(
                             color: Color(0xFFE3D8C3),
-                            fontSize: 9,
+                            fontSize: 7.5,
                             fontWeight: FontWeight.w700,
                             height: 1,
                           ),
@@ -547,7 +548,7 @@ class InventorySlot extends StatelessWidget {
                           'x${item!.quantity}',
                           style: const TextStyle(
                             color: Color(0xFF6FCF38),
-                            fontSize: 8,
+                            fontSize: 6.6,
                             fontWeight: FontWeight.w700,
                             height: 1,
                           ),
@@ -602,7 +603,7 @@ class UserTopBarSection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         TopBarPlaceholderLine(widthFactor: 0.54, bright: true),
-                        SizedBox(height: 7),
+                        SizedBox(height: 4),
                         TopBarPlaceholderLine(widthFactor: 0.3),
                       ],
                     ),
@@ -653,7 +654,7 @@ class ActivityTopBarSection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         TopBarPlaceholderLine(widthFactor: 0.5, bright: true),
-                        SizedBox(height: 7),
+                        SizedBox(height: 4),
                         TopBarPlaceholderLine(widthFactor: 0.58),
                       ],
                     ),
@@ -663,7 +664,7 @@ class ActivityTopBarSection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         TopBarPlaceholderLine(widthFactor: 0.44, bright: true),
-                        SizedBox(height: 7),
+                        SizedBox(height: 4),
                         TopBarPlaceholderLine(widthFactor: 0.36),
                       ],
                     ),
@@ -717,7 +718,7 @@ class WoodcuttingTopBarSection extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: player.when(
                       data: (value) => WoodcuttingDetails(player: value),
@@ -730,7 +731,7 @@ class WoodcuttingTopBarSection extends StatelessWidget {
                                 widthFactor: 0.62,
                                 bright: true,
                               ),
-                              SizedBox(height: 7),
+                              SizedBox(height: 4),
                               TopBarPlaceholderLine(widthFactor: 0.42),
                             ],
                           ),
@@ -743,7 +744,7 @@ class WoodcuttingTopBarSection extends StatelessWidget {
                                 widthFactor: 0.48,
                                 bright: true,
                               ),
-                              SizedBox(height: 7),
+                              SizedBox(height: 4),
                               TopBarPlaceholderLine(widthFactor: 0.32),
                             ],
                           ),
@@ -777,19 +778,19 @@ class ActivityDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Color(0xFFE3D8C3),
-            fontSize: 10.5,
+            fontSize: 9,
             fontWeight: FontWeight.w700,
             height: 1,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           status,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: activityColor(player),
-            fontSize: 10,
+            fontSize: 8.5,
             fontWeight: FontWeight.w700,
             height: 1,
             shadows: const [
@@ -828,31 +829,31 @@ class UserDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Color(0xFFE3D8C3),
-            fontSize: 10.5,
+            fontSize: 9,
             fontWeight: FontWeight.w700,
             height: 1,
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 3),
         Text(
           username,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Color(0xFFDBCDB4),
-            fontSize: 10,
+            fontSize: 8.5,
             fontWeight: FontWeight.w700,
             height: 1,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         SizedBox(
-          height: 16,
+          height: 14,
           child: OutlinedButton(
             onPressed: onLogout,
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-              minimumSize: const Size(0, 16),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+              minimumSize: const Size(0, 14),
               side: const BorderSide(color: Color(0xAA7C6B48), width: 0.8),
               backgroundColor: const Color(0x33150F08),
               foregroundColor: const Color(0xFFE6D9C2),
@@ -865,7 +866,7 @@ class UserDetails extends StatelessWidget {
             child: const Text(
               'Logout',
               style: TextStyle(
-                fontSize: 7.5,
+                fontSize: 6.7,
                 fontWeight: FontWeight.w700,
                 height: 1,
               ),
@@ -900,7 +901,7 @@ class WoodcuttingDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Color(0xFF6FCF38),
-            fontSize: 10.5,
+            fontSize: 9,
             fontWeight: FontWeight.w700,
             height: 1,
             shadows: [
@@ -912,28 +913,28 @@ class WoodcuttingDetails extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           'Level $level',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Color(0xFFE3D8C3),
-            fontSize: 9.5,
+            fontSize: 8,
             fontWeight: FontWeight.w600,
             height: 1,
           ),
         ),
-        const SizedBox(height: 5),
-        TopBarProgressBar(progress: progress),
         const SizedBox(height: 3),
+        TopBarProgressBar(progress: progress),
+        const SizedBox(height: 2),
         Text(
           '$xp / $nextXP XP',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Color(0xBFD7CDBB),
-            fontSize: 7.2,
+            fontSize: 6.3,
             fontWeight: FontWeight.w500,
             height: 1,
           ),
@@ -992,8 +993,8 @@ class TopBarDivider extends StatelessWidget {
               ],
             ),
           ),
-          const Positioned(top: 0, child: DividerStud()),
-          const Positioned(bottom: 0, child: DividerStud()),
+          const Positioned(top: 1, child: DividerStud()),
+          const Positioned(bottom: 1, child: DividerStud()),
         ],
       ),
     );
@@ -1007,7 +1008,7 @@ class DividerStud extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 18,
-      height: 18,
+      height: 14,
       decoration: BoxDecoration(
         color: const Color(0xFF5A4E38).withValues(alpha: 0.9),
         border: Border.all(color: const Color(0xCC1A140B), width: 1.1),
@@ -1047,7 +1048,7 @@ class TopBarIconWell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 42,
-      height: 42,
+      height: 34,
       decoration: BoxDecoration(
         color: const Color(0x44221810),
         borderRadius: BorderRadius.circular(5),
@@ -1066,7 +1067,7 @@ class TopBarIconWell extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(3),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: const Color(0x22110D08),
@@ -1089,7 +1090,7 @@ class TopBarProgressBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final clamped = progress.clamp(0, 1).toDouble();
     return Container(
-      height: 6,
+      height: 5,
       decoration: BoxDecoration(
         color: const Color(0xFF19140D),
         borderRadius: BorderRadius.circular(3),
@@ -1128,7 +1129,7 @@ class TopBarPlaceholderLine extends StatelessWidget {
     return FractionallySizedBox(
       widthFactor: widthFactor,
       child: Container(
-        height: bright ? 8 : 6,
+        height: bright ? 6 : 4,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(3),
           gradient: LinearGradient(
