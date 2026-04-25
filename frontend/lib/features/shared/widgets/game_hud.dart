@@ -642,6 +642,7 @@ class UserTopBarSection extends StatelessWidget {
                                     ? dbPositionLabel(playerValue)
                                     : null,
                             showRegister: value?.user.provider == 'guest',
+                            showLogout: value?.user.provider != 'guest',
                             onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
@@ -650,6 +651,7 @@ class UserTopBarSection extends StatelessWidget {
                           () => UserDetails(
                             username: value?.user.displayName ?? 'Guest',
                             showRegister: value?.user.provider == 'guest',
+                            showLogout: value?.user.provider != 'guest',
                             onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
@@ -658,6 +660,7 @@ class UserTopBarSection extends StatelessWidget {
                           (_, _) => UserDetails(
                             username: value?.user.displayName ?? 'Guest',
                             showRegister: value?.user.provider == 'guest',
+                            showLogout: value?.user.provider != 'guest',
                             onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
@@ -879,6 +882,7 @@ class UserDetails extends StatelessWidget {
     required this.username,
     this.dbPositionLabel,
     this.showRegister = false,
+    this.showLogout = true,
     this.onLogin,
     this.onRegister,
     required this.onLogout,
@@ -887,6 +891,7 @@ class UserDetails extends StatelessWidget {
   final String username;
   final String? dbPositionLabel;
   final bool showRegister;
+  final bool showLogout;
   final VoidCallback? onLogin;
   final VoidCallback? onRegister;
   final VoidCallback onLogout;
@@ -927,9 +932,11 @@ class UserDetails extends StatelessWidget {
               _UserActionButton(label: 'Register', onPressed: onRegister),
               const SizedBox(width: 4),
               _UserActionButton(label: 'Login', onPressed: onLogin),
-              const SizedBox(width: 4),
             ],
-            _UserActionButton(label: 'Logout', onPressed: onLogout),
+            if (showLogout) ...[
+              if (showRegister) const SizedBox(width: 4),
+              _UserActionButton(label: 'Logout', onPressed: onLogout),
+            ],
           ],
         ),
       ],

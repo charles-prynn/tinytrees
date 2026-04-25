@@ -91,7 +91,7 @@ void main() {
     expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
     expect(find.text('Login'), findsOneWidget);
-    expect(find.text('Logout'), findsOneWidget);
+    expect(find.text('Logout'), findsNothing);
 
     await tester.tap(find.text('Inventory'));
     await tester.pump();
@@ -151,7 +151,7 @@ void main() {
     expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
     expect(find.text('Login'), findsOneWidget);
-    expect(find.text('Logout'), findsOneWidget);
+    expect(find.text('Logout'), findsNothing);
   });
 
   testWidgets('guest register popup opens in the center overlay', (
