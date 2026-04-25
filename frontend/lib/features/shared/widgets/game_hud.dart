@@ -238,15 +238,14 @@ class InventoryTopBarSection extends StatelessWidget {
                 child: Row(
                   children: [
                     const TopBarIconWell(
-                      child: Center(
-                        child: Text(
-                          'Bag',
-                          style: TextStyle(
-                            color: Color(0xFFDBCDB4),
-                            fontSize: 6.4,
-                            fontWeight: FontWeight.w700,
-                            height: 1,
+                      child: Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Image(
+                          image: AssetImage(
+                            'assets/images/ui/bar/icons/Inventory-icon.png',
                           ),
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.none,
                         ),
                       ),
                     ),
@@ -629,61 +628,88 @@ class UserTopBarSection extends StatelessWidget {
         Positioned.fill(
           child: Padding(
             padding: EdgeInsets.only(left: showDivider ? 14 : 0, right: 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: auth.when(
-                data:
-                    (value) => player.when(
-                      data:
-                          (playerValue) => UserDetails(
-                            username: value?.user.displayName ?? 'Guest',
-                            dbPositionLabel:
-                                showCoordinateDebug
-                                    ? dbPositionLabel(playerValue)
-                                    : null,
-                            showRegister: value?.user.provider == 'guest',
-                            showLogout: value?.user.provider != 'guest',
-                            onLogin: onLoginPressed,
-                            onRegister: onRegisterPressed,
-                            onLogout: onLogout,
-                          ),
-                      loading:
-                          () => UserDetails(
-                            username: value?.user.displayName ?? 'Guest',
-                            showRegister: value?.user.provider == 'guest',
-                            showLogout: value?.user.provider != 'guest',
-                            onLogin: onLoginPressed,
-                            onRegister: onRegisterPressed,
-                            onLogout: onLogout,
-                          ),
-                      error:
-                          (_, _) => UserDetails(
-                            username: value?.user.displayName ?? 'Guest',
-                            showRegister: value?.user.provider == 'guest',
-                            showLogout: value?.user.provider != 'guest',
-                            onLogin: onLoginPressed,
-                            onRegister: onRegisterPressed,
-                            onLogout: onLogout,
-                          ),
-                    ),
-                loading:
-                    () => const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TopBarPlaceholderLine(widthFactor: 0.54, bright: true),
-                        SizedBox(height: 4),
-                        TopBarPlaceholderLine(widthFactor: 0.3),
-                      ],
-                    ),
-                error:
-                    (_, _) =>
-                        UserDetails(username: 'Offline', onLogout: onLogout),
-              ),
+            child: auth.when(
+              data:
+                  (value) => player.when(
+                    data:
+                        (playerValue) => _buildUserSection(
+                          username: value?.user.displayName ?? 'Guest',
+                          dbPositionLabel:
+                              showCoordinateDebug
+                                  ? dbPositionLabel(playerValue)
+                                  : null,
+                          showRegister: value?.user.provider == 'guest',
+                          showLogout: value?.user.provider != 'guest',
+                        ),
+                    loading:
+                        () => _buildUserSection(
+                          username: value?.user.displayName ?? 'Guest',
+                          showRegister: value?.user.provider == 'guest',
+                          showLogout: value?.user.provider != 'guest',
+                        ),
+                    error:
+                        (_, _) => _buildUserSection(
+                          username: value?.user.displayName ?? 'Guest',
+                          showRegister: value?.user.provider == 'guest',
+                          showLogout: value?.user.provider != 'guest',
+                        ),
+                  ),
+              loading:
+                  () => const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TopBarPlaceholderLine(widthFactor: 0.54, bright: true),
+                      SizedBox(height: 4),
+                      TopBarPlaceholderLine(widthFactor: 0.3),
+                    ],
+                  ),
+              error:
+                  (_, _) =>
+                      _buildUserSection(username: 'Offline', showLogout: true),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUserSection({
+    required String username,
+    String? dbPositionLabel,
+    bool showRegister = false,
+    bool showLogout = true,
+  }) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          const TopBarIconWell(
+            child: Padding(
+              padding: EdgeInsets.all(4),
+              child: Image(
+                image: AssetImage(
+                  'assets/images/ui/bar/icons/user-icon.png.png',
+                ),
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.none,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: UserDetails(
+              username: username,
+              dbPositionLabel: dbPositionLabel,
+              showRegister: showRegister,
+              showLogout: showLogout,
+              onLogin: onLoginPressed,
+              onRegister: onRegisterPressed,
+              onLogout: onLogout,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

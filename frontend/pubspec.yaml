@@ -70,6 +70,7 @@ flutter:
     - assets/images/entities/
     - assets/images/sprites/
     - assets/images/ui/bar/
+    - assets/images/ui/bar/icons/
     - assets/images/ui/bar/skills/
 
   # To add assets to your application, add an assets section, like this:
