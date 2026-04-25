@@ -86,7 +86,11 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 		player.X = targetX
 		player.Y = targetY
 		player.Movement = nil
-		return s.players.SavePlayer(ctx, player)
+		saved, err := s.players.SavePlayer(ctx, player)
+		if err != nil {
+			return domain.Player{}, err
+		}
+		return s.attachSkills(ctx, userID, saved)
 	}
 
 	duration := time.Duration(math.Round(pathDistance(path) / defaultPlayerSpeedTilesPerSecond * float64(time.Second)))
@@ -102,7 +106,11 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 		ArrivesAt:           now.Add(duration),
 		SpeedTilesPerSecond: defaultPlayerSpeedTilesPerSecond,
 	}
-	return s.players.SavePlayer(ctx, player)
+	saved, err := s.players.SavePlayer(ctx, player)
+	if err != nil {
+		return domain.Player{}, err
+	}
+	return s.attachSkills(ctx, userID, saved)
 }
 
 func (s *PlayerService) attachActiveAction(ctx context.Context, userID uuid.UUID, player domain.Player) (domain.Player, error) {

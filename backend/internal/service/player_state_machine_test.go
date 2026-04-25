@@ -54,6 +54,42 @@ func TestPlayerLifecycleMoveCancelsHarvest(t *testing.T) {
 	}
 }
 
+func TestPlayerLifecycleMoveReturnsAttachedSkills(t *testing.T) {
+	userID := uuid.New()
+	now := time.Date(2026, time.April, 25, 10, 0, 0, 0, time.UTC)
+	players := &memoryPlayerStore{
+		player: domain.Player{UserID: userID, X: 1, Y: 1},
+	}
+	skills := &memorySkills{
+		skills: map[string]domain.PlayerSkill{
+			"woodcutting": {
+				UserID:   userID,
+				SkillKey: "woodcutting",
+				XP:       125,
+				Level:    2,
+			},
+		},
+	}
+	service := NewPlayerService(
+		players,
+		&memoryMap{tileMap: domain.TileMap{UserID: userID, Width: 4, Height: 4, Tiles: filledTiles(16)}},
+		&memoryEntities{},
+		skills,
+	)
+	service.now = func() time.Time { return now }
+
+	player, err := service.Move(context.Background(), userID, 2, 1)
+	if err != nil {
+		t.Fatalf("Move returned error: %v", err)
+	}
+	if len(player.Skills) != 1 {
+		t.Fatalf("expected 1 attached skill, got %d", len(player.Skills))
+	}
+	if player.Skills[0].SkillKey != "woodcutting" || player.Skills[0].XP != 125 || player.Skills[0].Level != 2 {
+		t.Fatalf("unexpected attached skill: %#v", player.Skills[0])
+	}
+}
+
 func TestActionLifecycleHarvestRejectedWhileMoving(t *testing.T) {
 	userID := uuid.New()
 	now := time.Date(2026, time.April, 25, 10, 0, 0, 0, time.UTC)
