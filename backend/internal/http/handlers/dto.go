@@ -150,6 +150,8 @@ type playerDTO struct {
 	UserID    string             `json:"user_id"`
 	X         int                `json:"x"`
 	Y         int                `json:"y"`
+	RenderX   float64            `json:"render_x"`
+	RenderY   float64            `json:"render_y"`
 	Movement  *playerMovementDTO `json:"movement,omitempty"`
 	Action    *actionDTO         `json:"action,omitempty"`
 	Skills    []playerSkillDTO   `json:"skills,omitempty"`
@@ -304,15 +306,77 @@ func toEntityDTOs(entities []domain.Entity) []entityDTO {
 }
 
 func toPlayerDTO(player domain.Player) playerDTO {
+	renderX, renderY := currentPlayerRenderPosition(player, time.Now().UTC())
 	return playerDTO{
 		UserID:    player.UserID.String(),
 		X:         player.X,
 		Y:         player.Y,
+		RenderX:   renderX,
+		RenderY:   renderY,
 		Movement:  toPlayerMovementDTO(player.Movement),
 		Action:    toActionDTO(player.Action),
 		Skills:    toPlayerSkillDTOs(player.Skills),
 		UpdatedAt: player.UpdatedAt,
 	}
+}
+
+func currentPlayerRenderPosition(player domain.Player, now time.Time) (float64, float64) {
+	movement := player.Movement
+	if movement == nil || len(movement.Path) == 0 {
+		return float64(player.X), float64(player.Y)
+	}
+	if !now.Before(movement.ArrivesAt) {
+		return float64(movement.TargetX), float64(movement.TargetY)
+	}
+	if !now.After(movement.StartedAt) {
+		first := movement.Path[0]
+		return float64(first.X), float64(first.Y)
+	}
+
+	distance := now.Sub(movement.StartedAt).Seconds() * movement.SpeedTilesPerSecond
+	for i := 0; i < len(movement.Path)-1; i++ {
+		from := movement.Path[i]
+		to := movement.Path[i+1]
+		cost := pointStepCost(from, to)
+		if distance <= cost {
+			progress := 1.0
+			if cost > 0 {
+				progress = distance / cost
+			}
+			return lerpFloat(float64(from.X), float64(to.X), progress), lerpFloat(float64(from.Y), float64(to.Y), progress)
+		}
+		distance -= cost
+	}
+
+	last := movement.Path[len(movement.Path)-1]
+	return float64(last.X), float64(last.Y)
+}
+
+func pointStepCost(from domain.Point, to domain.Point) float64 {
+	dx := float64(from.X - to.X)
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := float64(from.Y - to.Y)
+	if dy < 0 {
+		dy = -dy
+	}
+	if dx == 1 && dy == 1 {
+		return 1.4142135623730951
+	}
+	if dx > dy {
+		return dx
+	}
+	return dy
+}
+
+func lerpFloat(from float64, to float64, progress float64) float64 {
+	if progress < 0 {
+		progress = 0
+	} else if progress > 1 {
+		progress = 1
+	}
+	return from + (to-from)*progress
 }
 
 func toPlayerMovementDTO(movement *domain.PlayerMovement) *playerMovementDTO {

@@ -210,6 +210,8 @@ PlayerState _playerState({
     userId: 'user-1',
     x: 16,
     y: 8,
+    renderX: 16,
+    renderY: 8,
     movement: null,
     action: action,
     skills: skills,

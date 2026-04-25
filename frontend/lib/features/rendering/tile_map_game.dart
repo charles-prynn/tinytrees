@@ -169,6 +169,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   Object? _mapLayerKey;
   bool _mapLayerBuildQueued = false;
   PlayerState? _player;
+  _PlayerRenderMotion? _playerRenderMotion;
   _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
   double _panX = 0;
   double _panY = 0;
@@ -180,15 +181,29 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
 
   set player(PlayerState? value) {
     final previous = _player;
+    final currentRenderPosition = _playerRenderPosition();
     _player = value;
-    if (previous == null || value == null) {
+    if (value == null) {
+      _playerRenderMotion = null;
       return;
     }
-    final delta = Offset(
-      (value.x - previous.x).toDouble(),
-      (value.y - previous.y).toDouble(),
-    );
+    final target = Offset(value.renderX, value.renderY);
+    if (previous == null || currentRenderPosition == null) {
+      _playerRenderMotion = _PlayerRenderMotion.snap(target);
+      return;
+    }
+    final delta = target - currentRenderPosition;
     _lastPlayerDirection = _directionForDelta(delta);
+    if (delta.distance > 1.5) {
+      _playerRenderMotion = _PlayerRenderMotion.snap(target);
+      return;
+    }
+    _playerRenderMotion = _PlayerRenderMotion(
+      from: currentRenderPosition,
+      to: target,
+      startedAtSeconds: _elapsedSeconds,
+      endsAtSeconds: _elapsedSeconds + 0.12,
+    );
   }
 
   set currentMap(TileMap? value) {
@@ -924,6 +939,18 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     return _playerPose()?.position;
   }
 
+  Offset? _playerRenderPosition() {
+    final motion = _playerRenderMotion;
+    if (motion != null) {
+      return motion.positionAt(_elapsedSeconds);
+    }
+    final current = _player;
+    if (current == null) {
+      return null;
+    }
+    return Offset(current.renderX, current.renderY);
+  }
+
   _PlayerPose? _playerPose() {
     return _serverPlayerPose(DateTime.now().toUtc());
   }
@@ -939,9 +966,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     }
 
     final movement = current.movement;
+    final renderPosition =
+        _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
     if (movement == null || movement.path.isEmpty) {
       return _PlayerPose(
-        position: Offset(current.x.toDouble(), current.y.toDouble()),
+        position: renderPosition,
         direction: _lastPlayerDirection,
         isMoving: false,
       );
@@ -954,7 +983,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     );
     _lastPlayerDirection = direction;
     return _PlayerPose(
-      position: Offset(current.x.toDouble(), current.y.toDouble()),
+      position: renderPosition,
       direction: direction,
       isMoving: now.isBefore(movement.arrivesAt),
     );
@@ -1066,6 +1095,40 @@ class _PlayerPose {
   final Offset position;
   final _PlayerDirection direction;
   final bool isMoving;
+}
+
+class _PlayerRenderMotion {
+  const _PlayerRenderMotion({
+    required this.from,
+    required this.to,
+    required this.startedAtSeconds,
+    required this.endsAtSeconds,
+  });
+
+  factory _PlayerRenderMotion.snap(Offset position) {
+    return _PlayerRenderMotion(
+      from: position,
+      to: position,
+      startedAtSeconds: 0,
+      endsAtSeconds: 0,
+    );
+  }
+
+  final Offset from;
+  final Offset to;
+  final double startedAtSeconds;
+  final double endsAtSeconds;
+
+  Offset positionAt(double elapsedSeconds) {
+    if (endsAtSeconds <= startedAtSeconds) {
+      return to;
+    }
+    final progress =
+        ((elapsedSeconds - startedAtSeconds) / (endsAtSeconds - startedAtSeconds))
+            .clamp(0, 1)
+            .toDouble();
+    return Offset.lerp(from, to, progress) ?? to;
+  }
 }
 
 class _WalkIconEffect {
