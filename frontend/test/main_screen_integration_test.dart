@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,8 +13,10 @@ import 'package:starter_frontend/features/entities/data/entity_repository.dart';
 import 'package:starter_frontend/features/entities/domain/world_entity.dart';
 import 'package:starter_frontend/features/inventory/data/inventory_repository.dart';
 import 'package:starter_frontend/features/inventory/domain/inventory_item.dart';
+import 'package:starter_frontend/features/map/application/map_controller.dart';
 import 'package:starter_frontend/features/map/data/map_repository.dart';
 import 'package:starter_frontend/features/map/domain/tile_map.dart';
+import 'package:starter_frontend/features/player/application/player_controller.dart';
 import 'package:starter_frontend/features/player/data/player_repository.dart';
 import 'package:starter_frontend/features/player/domain/player_state.dart';
 import 'package:starter_frontend/features/shared/main_screen.dart';
@@ -203,6 +206,61 @@ void main() {
     expect(find.text('Cancel'), findsOneWidget);
     expect(find.text('Login'), findsWidgets);
   });
+
+  testWidgets(
+    'loading overlay stays up until map, entities, player, and inventory load',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final mapCompleter = Completer<TileMap>();
+      final entitiesCompleter = Completer<List<WorldEntity>>();
+      final playerCompleter = Completer<PlayerState>();
+      final inventoryController = StreamController<List<InventoryItem>>();
+      addTearDown(inventoryController.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(() => _FakeAuthController()),
+            mapControllerProvider.overrideWith(
+              () => _DelayedMapController(mapCompleter.future),
+            ),
+            worldEntitiesProvider.overrideWith(
+              (ref) => entitiesCompleter.future,
+            ),
+            playerControllerProvider.overrideWith(
+              () => _DelayedPlayerController(playerCompleter.future),
+            ),
+            inventoryProvider.overrideWith((ref) => inventoryController.stream),
+            stateSnapshotProvider.overrideWith((ref) async => _snapshot),
+          ],
+          child: const MaterialApp(home: MainScreen()),
+        ),
+      );
+
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('game-loading-overlay')),
+        findsOneWidget,
+      );
+      expect(find.text('Preparing the world...'), findsOneWidget);
+
+      mapCompleter.complete(_tileMap);
+      entitiesCompleter.complete(_entities);
+      playerCompleter.complete(_playerState());
+      inventoryController.add(_inventory);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byKey(const ValueKey('game-loading-overlay')), findsNothing);
+      expect(find.text('Woodcutting'), findsOneWidget);
+    },
+  );
 }
 
 Widget _buildTestApp({required PlayerState player}) {
@@ -231,6 +289,24 @@ class _FakeAuthController extends AuthController {
   Future<void> logout() async {
     state = const AsyncData(null);
   }
+}
+
+class _DelayedMapController extends MapController {
+  _DelayedMapController(this._future);
+
+  final Future<TileMap> _future;
+
+  @override
+  Future<TileMap> build() => _future;
+}
+
+class _DelayedPlayerController extends PlayerController {
+  _DelayedPlayerController(this._future);
+
+  final Future<PlayerState> _future;
+
+  @override
+  Future<PlayerState> build() => _future;
 }
 
 PlayerState _playerState({

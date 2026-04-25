@@ -6,11 +6,13 @@ import '../../core/config/app_config.dart';
 import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
 import '../entities/domain/world_entity.dart';
+import '../inventory/data/inventory_repository.dart';
 import '../map/application/map_controller.dart';
 import '../map/domain/tile_map.dart';
 import '../player/application/player_controller.dart';
 import '../player/domain/player_state.dart';
 import '../rendering/tile_map_game.dart';
+import 'widgets/game_loading_overlay.dart';
 import 'widgets/game_hud.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
@@ -85,7 +87,26 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(worldEntitiesProvider);
+    final map = ref.watch(mapControllerProvider);
+    final entities = ref.watch(worldEntitiesProvider);
+    final player = ref.watch(playerControllerProvider);
+    final inventory = ref.watch(inventoryProvider);
+    final loadingError = _loadingErrorMessage(
+      map: map,
+      entities: entities,
+      player: player,
+      inventory: inventory,
+    );
+    final loading =
+        loadingError != null ||
+        map.isLoading ||
+        !map.hasValue ||
+        entities.isLoading ||
+        !entities.hasValue ||
+        player.isLoading ||
+        !player.hasValue ||
+        inventory.isLoading ||
+        !inventory.hasValue;
 
     return Scaffold(
       body: Stack(
@@ -118,9 +139,35 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             onRegistrationPressed: _openRegistration,
             onRegistrationClosed: _closeRegistration,
           ),
+          if (loading)
+            GameLoadingOverlay(
+              mapReady: map.hasValue,
+              resourcesReady: entities.hasValue,
+              playerReady: player.hasValue,
+              inventoryReady: inventory.hasValue,
+              errorMessage: loadingError,
+              onRetry: () => retryGameLoad(ref),
+            ),
         ],
       ),
     );
+  }
+
+  String? _loadingErrorMessage({
+    required AsyncValue<TileMap> map,
+    required AsyncValue<List<WorldEntity>> entities,
+    required AsyncValue<PlayerState> player,
+    required AsyncValue<dynamic> inventory,
+  }) {
+    final error =
+        map.asError?.error ??
+        entities.asError?.error ??
+        player.asError?.error ??
+        inventory.asError?.error;
+    if (error == null) {
+      return null;
+    }
+    return '$error';
   }
 
   Future<void> _handleTapUp(TapUpDetails details) async {
