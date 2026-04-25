@@ -25,6 +25,20 @@ class AuthApi {
     return GuestLoginResponse(user: user, tokens: tokens);
   }
 
+  Future<GuestLoginResponse> login({
+    required String username,
+    required String password,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/auth/login',
+      data: {'username': username, 'password': password},
+    );
+    final data = unwrapData(response.data);
+    final user = AppUser.fromJson(data['user'] as Map<String, dynamic>);
+    final tokens = _parseTokens(data['tokens'] as Map<String, dynamic>);
+    return GuestLoginResponse(user: user, tokens: tokens);
+  }
+
   Future<AppUser> me() async {
     final response = await _dio.get<Map<String, dynamic>>('/v1/me');
     final data = unwrapData(response.data);
@@ -41,11 +55,7 @@ class AuthApi {
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/guest/upgrade',
-      data: {
-        'username': username,
-        'email': '',
-        'password': password,
-      },
+      data: {'username': username, 'email': '', 'password': password},
     );
     final data = unwrapData(response.data);
     return AppUser.fromJson(data['user'] as Map<String, dynamic>);

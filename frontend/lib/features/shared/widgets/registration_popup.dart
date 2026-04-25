@@ -51,7 +51,7 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const _PopupBar(title: 'Register'),
+                  const PopupBar(title: 'Register'),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                     child: Column(
@@ -67,14 +67,14 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _PopupField(
+                        PopupField(
                           controller: _usernameController,
                           label: 'Username',
                           enabled: !_submitting,
                           textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 12),
-                        _PopupField(
+                        PopupField(
                           controller: _passwordController,
                           label: 'Password',
                           enabled: !_submitting,
@@ -97,13 +97,14 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            _PopupButton(
+                            PopupButton(
                               label: 'Cancel',
                               onPressed: _submitting ? null : widget.onClose,
                             ),
                             const SizedBox(width: 8),
-                            _PopupButton(
-                              label: _submitting ? 'Registering...' : 'Register',
+                            PopupButton(
+                              label:
+                                  _submitting ? 'Registering...' : 'Register',
                               highlighted: true,
                               onPressed: _submitting ? null : _submit,
                             ),
@@ -112,7 +113,7 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
                       ],
                     ),
                   ),
-                  const _PopupBar(),
+                  const PopupBar(),
                 ],
               ),
             ),
@@ -169,8 +170,8 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
   }
 }
 
-class _PopupBar extends StatelessWidget {
-  const _PopupBar({this.title});
+class PopupBar extends StatelessWidget {
+  const PopupBar({super.key, this.title});
 
   final String? title;
 
@@ -238,8 +239,9 @@ class _PopupBar extends StatelessWidget {
   }
 }
 
-class _PopupField extends StatelessWidget {
-  const _PopupField({
+class PopupField extends StatelessWidget {
+  const PopupField({
+    super.key,
     required this.controller,
     required this.label,
     required this.enabled,
@@ -270,10 +272,7 @@ class _PopupField extends StatelessWidget {
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(
-          color: Color(0xFFD2C4AC),
-          fontSize: 13,
-        ),
+        labelStyle: const TextStyle(color: Color(0xFFD2C4AC), fontSize: 13),
         filled: true,
         fillColor: const Color(0x33150F08),
         enabledBorder: OutlineInputBorder(
@@ -297,8 +296,9 @@ class _PopupField extends StatelessWidget {
   }
 }
 
-class _PopupButton extends StatelessWidget {
-  const _PopupButton({
+class PopupButton extends StatelessWidget {
+  const PopupButton({
+    super.key,
     required this.label,
     required this.onPressed,
     this.highlighted = false,
@@ -316,9 +316,7 @@ class _PopupButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         side: BorderSide(
           color:
-              highlighted
-                  ? const Color(0xFFE2BF63)
-                  : const Color(0xAA7C6B48),
+              highlighted ? const Color(0xFFE2BF63) : const Color(0xAA7C6B48),
           width: 1,
         ),
         backgroundColor:

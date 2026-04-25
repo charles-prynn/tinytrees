@@ -55,4 +55,13 @@ class AuthRepository {
     );
     return AuthSession(user: user);
   }
+
+  Future<AuthSession> login({
+    required String username,
+    required String password,
+  }) async {
+    final login = await _api.login(username: username, password: password);
+    await _tokenStorage.write(login.tokens);
+    return AuthSession(user: login.user);
+  }
 }

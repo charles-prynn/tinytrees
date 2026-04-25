@@ -28,6 +28,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   String? _holdLabel;
   int _interactionSequence = 0;
   bool _inventoryOpen = false;
+  bool _loginOpen = false;
   bool _registrationOpen = false;
 
   @override
@@ -70,8 +71,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     });
     ref.listenManual(authControllerProvider, (_, next) {
       next.whenData((value) {
-        if (value?.user.provider != 'guest' && _registrationOpen && mounted) {
+        if (value?.user.provider != 'guest' &&
+            (_registrationOpen || _loginOpen) &&
+            mounted) {
           setState(() {
+            _loginOpen = false;
             _registrationOpen = false;
           });
         }
@@ -104,10 +108,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
           GameHud(
             inventoryOpen: _inventoryOpen,
+            loginOpen: _loginOpen,
             registrationOpen: _registrationOpen,
             showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
             onInventoryPressed: _toggleInventory,
             onInventoryClosed: _toggleInventory,
+            onLoginPressed: _openLogin,
+            onLoginClosed: _closeLogin,
             onRegistrationPressed: _openRegistration,
             onRegistrationClosed: _closeRegistration,
           ),
@@ -164,6 +171,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
     setState(() {
+      _loginOpen = false;
       _registrationOpen = true;
     });
   }
@@ -174,6 +182,25 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
     setState(() {
       _registrationOpen = false;
+    });
+  }
+
+  void _openLogin() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _registrationOpen = false;
+      _loginOpen = true;
+    });
+  }
+
+  void _closeLogin() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loginOpen = false;
     });
   }
 

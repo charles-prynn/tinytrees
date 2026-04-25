@@ -90,6 +90,7 @@ void main() {
     expect(find.text('User'), findsOneWidget);
     expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
 
     await tester.tap(find.text('Inventory'));
@@ -149,10 +150,13 @@ void main() {
     expect(find.text('User'), findsOneWidget);
     expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
   });
 
-  testWidgets('guest register popup opens in the center overlay', (tester) async {
+  testWidgets('guest register popup opens in the center overlay', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -166,11 +170,38 @@ void main() {
     await tester.tap(find.text('Register'));
     await tester.pump();
 
-    expect(find.text('Upgrade your guest account with a username and password.'), findsOneWidget);
+    expect(
+      find.text('Upgrade your guest account with a username and password.'),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Password'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
     expect(find.text('Register'), findsWidgets);
+  });
+
+  testWidgets('guest login popup opens next to register flow', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_buildTestApp(player: _playerState()));
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.text('Login'));
+    await tester.pump();
+
+    expect(
+      find.text('Sign in with your username and password.'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Password'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.text('Login'), findsWidgets);
   });
 }
 

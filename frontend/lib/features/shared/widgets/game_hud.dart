@@ -7,25 +7,32 @@ import '../../inventory/data/inventory_repository.dart';
 import '../../inventory/domain/inventory_item.dart';
 import '../../player/application/player_controller.dart';
 import '../../player/domain/player_state.dart';
+import 'login_popup.dart';
 import 'registration_popup.dart';
 
 class GameHud extends ConsumerWidget {
   const GameHud({
     super.key,
     required this.inventoryOpen,
+    required this.loginOpen,
     required this.registrationOpen,
     required this.showCoordinateDebug,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
+    required this.onLoginPressed,
+    required this.onLoginClosed,
     required this.onRegistrationPressed,
     required this.onRegistrationClosed,
   });
 
   final bool inventoryOpen;
+  final bool loginOpen;
   final bool registrationOpen;
   final bool showCoordinateDebug;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
+  final VoidCallback onLoginPressed;
+  final VoidCallback onLoginClosed;
   final VoidCallback onRegistrationPressed;
   final VoidCallback onRegistrationClosed;
 
@@ -41,6 +48,7 @@ class GameHud extends ConsumerWidget {
               inventoryOpen: inventoryOpen,
               showCoordinateDebug: showCoordinateDebug,
               onInventoryPressed: onInventoryPressed,
+              onLoginPressed: onLoginPressed,
               onRegistrationPressed: onRegistrationPressed,
             ),
           ),
@@ -60,8 +68,8 @@ class GameHud extends ConsumerWidget {
             ),
           ),
         ),
-        if (registrationOpen)
-          RegistrationPopup(onClose: onRegistrationClosed),
+        if (loginOpen) LoginPopup(onClose: onLoginClosed),
+        if (registrationOpen) RegistrationPopup(onClose: onRegistrationClosed),
       ],
     );
   }
@@ -73,6 +81,7 @@ class TopBar extends ConsumerWidget {
     required this.inventoryOpen,
     required this.showCoordinateDebug,
     required this.onInventoryPressed,
+    required this.onLoginPressed,
     required this.onRegistrationPressed,
   });
 
@@ -85,6 +94,7 @@ class TopBar extends ConsumerWidget {
   final bool inventoryOpen;
   final bool showCoordinateDebug;
   final VoidCallback onInventoryPressed;
+  final VoidCallback onLoginPressed;
   final VoidCallback onRegistrationPressed;
 
   double get _capWidth => barHeight * (_capSourceWidth / _sourceHeight);
@@ -171,6 +181,7 @@ class TopBar extends ConsumerWidget {
                                 auth: auth,
                                 player: player,
                                 showCoordinateDebug: showCoordinateDebug,
+                                onLoginPressed: onLoginPressed,
                                 onRegisterPressed: onRegistrationPressed,
                                 onLogout:
                                     () =>
@@ -590,6 +601,7 @@ class UserTopBarSection extends StatelessWidget {
     required this.auth,
     required this.player,
     required this.showCoordinateDebug,
+    required this.onLoginPressed,
     required this.onRegisterPressed,
     required this.onLogout,
   });
@@ -598,6 +610,7 @@ class UserTopBarSection extends StatelessWidget {
   final AsyncValue<AuthSession?> auth;
   final AsyncValue<PlayerState> player;
   final bool showCoordinateDebug;
+  final VoidCallback onLoginPressed;
   final VoidCallback onRegisterPressed;
   final VoidCallback onLogout;
 
@@ -629,6 +642,7 @@ class UserTopBarSection extends StatelessWidget {
                                     ? dbPositionLabel(playerValue)
                                     : null,
                             showRegister: value?.user.provider == 'guest',
+                            onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
                           ),
@@ -636,6 +650,7 @@ class UserTopBarSection extends StatelessWidget {
                           () => UserDetails(
                             username: value?.user.displayName ?? 'Guest',
                             showRegister: value?.user.provider == 'guest',
+                            onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
                           ),
@@ -643,6 +658,7 @@ class UserTopBarSection extends StatelessWidget {
                           (_, _) => UserDetails(
                             username: value?.user.displayName ?? 'Guest',
                             showRegister: value?.user.provider == 'guest',
+                            onLogin: onLoginPressed,
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,
                           ),
@@ -658,10 +674,8 @@ class UserTopBarSection extends StatelessWidget {
                       ],
                     ),
                 error:
-                    (_, _) => UserDetails(
-                      username: 'Offline',
-                      onLogout: onLogout,
-                    ),
+                    (_, _) =>
+                        UserDetails(username: 'Offline', onLogout: onLogout),
               ),
             ),
           ),
@@ -865,6 +879,7 @@ class UserDetails extends StatelessWidget {
     required this.username,
     this.dbPositionLabel,
     this.showRegister = false,
+    this.onLogin,
     this.onRegister,
     required this.onLogout,
   });
@@ -872,6 +887,7 @@ class UserDetails extends StatelessWidget {
   final String username;
   final String? dbPositionLabel;
   final bool showRegister;
+  final VoidCallback? onLogin;
   final VoidCallback? onRegister;
   final VoidCallback onLogout;
 
@@ -909,6 +925,8 @@ class UserDetails extends StatelessWidget {
           children: [
             if (showRegister) ...[
               _UserActionButton(label: 'Register', onPressed: onRegister),
+              const SizedBox(width: 4),
+              _UserActionButton(label: 'Login', onPressed: onLogin),
               const SizedBox(width: 4),
             ],
             _UserActionButton(label: 'Logout', onPressed: onLogout),
