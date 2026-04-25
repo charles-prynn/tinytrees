@@ -162,6 +162,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   final Map<String, Image> _entityImages;
   final TileRenderConfig _renderConfig;
   final bool _showDebugLabels;
+  static const _playerRenderSmoothingSeconds = 0.24;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
@@ -202,7 +203,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       from: currentRenderPosition,
       to: target,
       startedAtSeconds: _elapsedSeconds,
-      endsAtSeconds: _elapsedSeconds + 0.12,
+      endsAtSeconds: _elapsedSeconds + _playerRenderSmoothingSeconds,
     );
   }
 
@@ -1127,7 +1128,8 @@ class _PlayerRenderMotion {
         ((elapsedSeconds - startedAtSeconds) / (endsAtSeconds - startedAtSeconds))
             .clamp(0, 1)
             .toDouble();
-    return Offset.lerp(from, to, progress) ?? to;
+    final eased = progress * progress * (3 - 2 * progress);
+    return Offset.lerp(from, to, eased) ?? to;
   }
 }
 
