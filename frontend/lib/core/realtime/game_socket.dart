@@ -18,6 +18,20 @@ final gameSocketProvider = Provider<GameSocket>((ref) {
   return socket;
 });
 
+final gameSocketConnectionProvider = StreamProvider<GameSocketConnectionState>((
+  ref,
+) {
+  final socket = ref.watch(gameSocketProvider);
+  return socket.connectionStates;
+});
+
+enum GameSocketConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+}
+
 class GameSocket {
   GameSocket({required AppConfig config, required TokenStorage tokenStorage})
     : _config = config,
@@ -28,11 +42,23 @@ class GameSocket {
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
   final StreamController<GameSocketMessage> _events =
       StreamController<GameSocketMessage>.broadcast();
+  final StreamController<GameSocketConnectionState> _connectionEvents =
+      StreamController<GameSocketConnectionState>.broadcast();
 
   WebSocketChannel? _socket;
   Future<WebSocketChannel>? _connecting;
   StreamSubscription? _subscription;
+  Future<void>? _reconnectLoop;
+  GameSocketConnectionState _connectionState =
+      GameSocketConnectionState.disconnected;
+  bool _disposed = false;
+  int _reconnectAttempt = 0;
   int _nextID = 0;
+
+  Stream<GameSocketConnectionState> get connectionStates async* {
+    yield _connectionState;
+    yield* _connectionEvents.stream;
+  }
 
   Future<Map<String, dynamic>> request(
     String type, {
@@ -71,15 +97,18 @@ class GameSocket {
   }
 
   Future<void> close() async {
+    _disposed = true;
     final socket = _socket;
     final subscription = _subscription;
     _socket = null;
     _subscription = null;
     _connecting = null;
+    _updateConnectionState(GameSocketConnectionState.disconnected);
     _failPending(const AppError('Realtime connection closed'));
     _debugLog('close');
     await subscription?.cancel();
     await socket?.sink.close();
+    await _connectionEvents.close();
     await _events.close();
   }
 
@@ -100,6 +129,12 @@ class GameSocket {
       return connecting;
     }
 
+    _updateConnectionState(
+      _reconnectAttempt > 0 ||
+              _connectionState == GameSocketConnectionState.reconnecting
+          ? GameSocketConnectionState.reconnecting
+          : GameSocketConnectionState.connecting,
+    );
     final next = _open();
     _connecting = next;
     return next;
@@ -117,25 +152,29 @@ class GameSocket {
 
       final uri = Uri.parse(_webSocketURL(tokens.accessToken));
       _debugLog('connect', {'url': _redactedURL(uri)});
+      final shouldResync = _reconnectAttempt > 0;
       final socket = WebSocketChannel.connect(uri);
       _socket = socket;
       _connecting = null;
+      _reconnectAttempt = 0;
+      _updateConnectionState(GameSocketConnectionState.connected);
       _subscription = socket.stream.listen(
         _handleMessage,
         onError: (Object error) {
-          _socket = null;
-          _subscription = null;
           _debugLog('error', {'error': error.toString()});
-          _failPending(AppError('Realtime connection failed', cause: error));
+          _handleDisconnect(
+            AppError('Realtime connection failed', cause: error),
+          );
         },
         onDone: () {
-          _socket = null;
-          _subscription = null;
           _debugLog('done');
-          _failPending(const AppError('Realtime connection closed'));
+          _handleDisconnect(const AppError('Realtime connection closed'));
         },
         cancelOnError: true,
       );
+      if (shouldResync) {
+        unawaited(_recoverState());
+      }
       return socket;
     } catch (error) {
       _connecting = null;
@@ -230,6 +269,92 @@ class GameSocket {
       }
     }
     _pending.clear();
+  }
+
+  void _handleDisconnect(Object error) {
+    _socket = null;
+    _subscription = null;
+    _connecting = null;
+    _failPending(error);
+    if (_disposed) {
+      return;
+    }
+    _updateConnectionState(GameSocketConnectionState.reconnecting);
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectLoop != null || _disposed) {
+      return;
+    }
+    _reconnectLoop = _runReconnectLoop();
+  }
+
+  Future<void> _runReconnectLoop() async {
+    try {
+      while (!_disposed && _socket == null) {
+        final attempt = ++_reconnectAttempt;
+        final delay = _reconnectDelay(attempt);
+        _debugLog('reconnect-wait', {
+          'attempt': attempt,
+          'delay_ms': delay.inMilliseconds,
+        });
+        await Future<void>.delayed(delay);
+        if (_disposed || _socket != null) {
+          return;
+        }
+        try {
+          await _connect();
+          return;
+        } catch (error) {
+          _debugLog('reconnect-failed', {
+            'attempt': attempt,
+            'error': error.toString(),
+          });
+          if (_isUnauthorized(error)) {
+            _updateConnectionState(GameSocketConnectionState.disconnected);
+            return;
+          }
+        }
+      }
+    } finally {
+      _reconnectLoop = null;
+    }
+  }
+
+  Duration _reconnectDelay(int attempt) {
+    const delays = [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+      Duration(seconds: 30),
+    ];
+    return delays[(attempt - 1).clamp(0, delays.length - 1)];
+  }
+
+  Future<void> _recoverState() async {
+    try {
+      await request('ping');
+      await request('player.get');
+      await request('inventory.get');
+      _debugLog('resync-ok');
+    } catch (error) {
+      _debugLog('resync-failed', {'error': error.toString()});
+    }
+  }
+
+  bool _isUnauthorized(Object error) {
+    return error is AppError && error.code == 'unauthorized';
+  }
+
+  void _updateConnectionState(GameSocketConnectionState next) {
+    if (_connectionState == next || _connectionEvents.isClosed) {
+      return;
+    }
+    _connectionState = next;
+    _connectionEvents.add(next);
+    _debugLog('connection-state', {'state': next.name});
   }
 
   void _debugLog(String event, [Map<String, Object?> details = const {}]) {

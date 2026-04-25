@@ -69,6 +69,8 @@ flutter:
     - assets/images/tiles/
     - assets/images/entities/
     - assets/images/sprites/
+    - assets/images/sprites/character/
+    - assets/images/sprites/character/items/
     - assets/images/ui/bar/
     - assets/images/ui/bar/icons/
     - assets/images/ui/bar/skills/

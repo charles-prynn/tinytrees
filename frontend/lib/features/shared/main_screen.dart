@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/realtime/game_socket.dart';
 import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
 import '../entities/domain/world_entity.dart';
@@ -91,6 +92,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final entities = ref.watch(worldEntitiesProvider);
     final player = ref.watch(playerControllerProvider);
     final inventory = ref.watch(inventoryProvider);
+    final connectionState = ref.watch(gameSocketConnectionProvider);
+    final socketState = connectionState.asData?.value;
     final loadingError = _loadingErrorMessage(
       map: map,
       entities: entities,
@@ -148,6 +151,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               errorMessage: loadingError,
               onRetry: () => retryGameLoad(ref),
             ),
+          if (!loading && socketState != null)
+            if (socketState != GameSocketConnectionState.connected)
+              GameConnectionBanner(state: socketState),
         ],
       ),
     );
@@ -258,7 +264,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     if (!mounted || !moved || sequence != _interactionSequence) {
       return;
     }
-    _game.facePlayer(target.facing);
 
     final movement = ref.read(playerControllerProvider).value?.movement;
     if (movement != null) {
@@ -271,6 +276,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
 
+    _game.facePlayer(target.facing);
     final started = await controller.startHarvest(entityId: target.entityId);
     if (!mounted || !started || sequence != _interactionSequence) {
       return;

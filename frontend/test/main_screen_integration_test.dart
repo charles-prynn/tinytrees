@@ -6,22 +6,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:starter_frontend/features/auth/data/auth_controller.dart';
-import 'package:starter_frontend/features/auth/domain/auth_session.dart';
-import 'package:starter_frontend/features/auth/domain/user.dart';
-import 'package:starter_frontend/features/entities/data/entity_repository.dart';
-import 'package:starter_frontend/features/entities/domain/world_entity.dart';
-import 'package:starter_frontend/features/inventory/data/inventory_repository.dart';
-import 'package:starter_frontend/features/inventory/domain/inventory_item.dart';
-import 'package:starter_frontend/features/map/application/map_controller.dart';
-import 'package:starter_frontend/features/map/data/map_repository.dart';
-import 'package:starter_frontend/features/map/domain/tile_map.dart';
-import 'package:starter_frontend/features/player/application/player_controller.dart';
-import 'package:starter_frontend/features/player/data/player_repository.dart';
-import 'package:starter_frontend/features/player/domain/player_state.dart';
-import 'package:starter_frontend/features/shared/main_screen.dart';
-import 'package:starter_frontend/features/state/data/state_repository.dart';
-import 'package:starter_frontend/features/state/domain/state_snapshot.dart';
+import 'package:treescape/features/auth/data/auth_controller.dart';
+import 'package:treescape/features/auth/domain/auth_session.dart';
+import 'package:treescape/features/auth/domain/user.dart';
+import 'package:treescape/features/entities/data/entity_repository.dart';
+import 'package:treescape/features/entities/domain/world_entity.dart';
+import 'package:treescape/features/inventory/data/inventory_repository.dart';
+import 'package:treescape/features/inventory/domain/inventory_item.dart';
+import 'package:treescape/features/map/application/map_controller.dart';
+import 'package:treescape/features/map/data/map_repository.dart';
+import 'package:treescape/features/map/domain/tile_map.dart';
+import 'package:treescape/features/player/application/player_controller.dart';
+import 'package:treescape/features/player/data/player_repository.dart';
+import 'package:treescape/features/player/domain/player_state.dart';
+import 'package:treescape/features/shared/main_screen.dart';
+import 'package:treescape/features/state/data/state_repository.dart';
+import 'package:treescape/features/state/domain/state_snapshot.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

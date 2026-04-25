@@ -12,6 +12,7 @@ import '../entities/domain/world_entity.dart';
 import '../map/domain/tile_map.dart';
 import '../player/domain/player_state.dart';
 import 'entity_visuals.dart';
+import 'player_character.dart';
 
 class TileMapGame extends FlameGame with PanDetector {
   TileMapGame({
@@ -37,7 +38,7 @@ class TileMapGame extends FlameGame with PanDetector {
   Future<void> onLoad() async {
     final tileset = await images.load('tiles/tile_map.png');
     final walkIcon = await images.load('sprites/walk_icon.png');
-    final playerSprite = await images.load('sprites/lumberjack.png');
+    final playerCharacter = await PlayerCharacterSheet.load(images);
     final entityImages = {
       'animated_autumn_tree': await images.load(
         'entities/animated_autumn_tree.png',
@@ -46,7 +47,7 @@ class TileMapGame extends FlameGame with PanDetector {
     _renderer = TileMapRenderer(
       tileset: tileset,
       walkIcon: walkIcon,
-      playerSprite: playerSprite,
+      playerCharacter: playerCharacter,
       entityImages: entityImages,
       renderConfig: _renderConfig,
       showDebugLabels: _showCoordinateDebug,
@@ -148,20 +149,20 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   TileMapRenderer({
     required Image tileset,
     required Image walkIcon,
-    required Image playerSprite,
+    required PlayerCharacterSheet playerCharacter,
     required Map<String, Image> entityImages,
     required TileRenderConfig renderConfig,
     required bool showDebugLabels,
   }) : _tileset = tileset,
        _walkIcon = walkIcon,
-       _playerSprite = playerSprite,
+       _playerCharacter = playerCharacter,
        _entityImages = entityImages,
        _renderConfig = renderConfig,
        _showDebugLabels = showDebugLabels;
 
   final Image _tileset;
   final Image _walkIcon;
-  final Image _playerSprite;
+  final PlayerCharacterSheet _playerCharacter;
   final Map<String, Image> _entityImages;
   final TileRenderConfig _renderConfig;
   final bool _showDebugLabels;
@@ -601,21 +602,21 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required double drawTileSize,
     required Paint paint,
   }) {
-    const frameWidth = 22.0;
-    const frameHeight = 22.0;
-    const rowStride = 24.5;
-    const frameCount = 9;
-    final frame =
-        pose.isMoving ? ((_elapsedSeconds * 10).floor() % frameCount) : 0;
-    final source = Rect.fromLTWH(
-      frame * frameWidth,
-      pose.direction.row * rowStride,
-      frameWidth,
-      frameHeight,
-    );
+    final animation =
+        player?.action?.type == 'harvest'
+            ? PlayerCharacterAnimation.slash
+            : pose.isMoving
+            ? PlayerCharacterAnimation.walk
+            : PlayerCharacterAnimation.idle;
+    final direction = switch (pose.direction) {
+      _PlayerDirection.front => PlayerCharacterDirection.down,
+      _PlayerDirection.left => PlayerCharacterDirection.left,
+      _PlayerDirection.right => PlayerCharacterDirection.right,
+      _PlayerDirection.back => PlayerCharacterDirection.up,
+    };
 
-    final drawWidth = drawTileSize * 1.6;
-    final drawHeight = drawWidth * frameHeight / frameWidth;
+    final drawWidth = drawTileSize * 2;
+    final drawHeight = drawWidth;
     final footX = offset.dx + (pose.position.dx + 0.5) * drawTileSize;
     final footY = offset.dy + (pose.position.dy + 1) * drawTileSize;
     final destination = Rect.fromLTWH(
@@ -624,7 +625,18 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawWidth,
       drawHeight,
     );
-    canvas.drawImageRect(_playerSprite, source, destination, paint);
+    for (final layer in _playerCharacter.layers) {
+      final source = _playerCharacter.sourceRectFor(
+        layer: layer,
+        animation: animation,
+        direction: direction,
+        elapsedSeconds: _elapsedSeconds,
+      );
+      if (source == null) {
+        continue;
+      }
+      canvas.drawImageRect(layer.image, source, destination, paint);
+    }
   }
 
   void _drawMapLayer({
@@ -969,6 +981,18 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return null;
     }
 
+    final harvestDirection = _harvestDirectionFor(current);
+    if (harvestDirection != null) {
+      _lastPlayerDirection = harvestDirection;
+      final renderPosition =
+          _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
+      return _PlayerPose(
+        position: renderPosition,
+        direction: harvestDirection,
+        isMoving: false,
+      );
+    }
+
     final movement = current.movement;
     final renderPosition =
         _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
@@ -991,6 +1015,39 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       direction: direction,
       isMoving: now.isBefore(movement.arrivesAt),
     );
+  }
+
+  _PlayerDirection? _harvestDirectionFor(PlayerState current) {
+    final action = current.action;
+    final entityId = action?.entityId;
+    if (action?.type != 'harvest' || entityId == null || entityId.isEmpty) {
+      return null;
+    }
+    final entity = entities.cast<WorldEntity?>().firstWhere(
+      (candidate) => candidate?.id == entityId,
+      orElse: () => null,
+    );
+    if (entity == null) {
+      return null;
+    }
+
+    final bounds = _entityCollisionBounds(entity);
+    final playerX = current.x.toDouble() + 0.5;
+    final playerY = current.y.toDouble() + 0.5;
+
+    if (playerX < bounds.left) {
+      return _PlayerDirection.right;
+    }
+    if (playerX > bounds.right) {
+      return _PlayerDirection.left;
+    }
+    if (playerY < bounds.top) {
+      return _PlayerDirection.front;
+    }
+    if (playerY > bounds.bottom) {
+      return _PlayerDirection.back;
+    }
+    return null;
   }
 
   _PlayerDirection _directionForDelta(Offset delta) {
