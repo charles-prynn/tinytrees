@@ -46,6 +46,7 @@ class TileMapGame extends FlameGame with PanDetector {
       playerSprite: playerSprite,
       entityImages: entityImages,
       renderConfig: _renderConfig,
+      showDebugLabels: _showFps,
     );
     await add(_renderer!);
     if (_showFps) {
@@ -147,17 +148,20 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required Image playerSprite,
     required Map<String, Image> entityImages,
     required TileRenderConfig renderConfig,
+    required bool showDebugLabels,
   }) : _tileset = tileset,
        _walkIcon = walkIcon,
        _playerSprite = playerSprite,
        _entityImages = entityImages,
-       _renderConfig = renderConfig;
+       _renderConfig = renderConfig,
+       _showDebugLabels = showDebugLabels;
 
   final Image _tileset;
   final Image _walkIcon;
   final Image _playerSprite;
   final Map<String, Image> _entityImages;
   final TileRenderConfig _renderConfig;
+  final bool _showDebugLabels;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
@@ -513,6 +517,14 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       sourceColumns: sourceColumns,
       paint: paint,
     );
+    if (_showDebugLabels) {
+      _drawTileCoordinates(
+        canvas: canvas,
+        map: map,
+        offset: offset,
+        drawTileSize: drawTileSize,
+      );
+    }
 
     for (final entity in entities) {
       _drawEntity(
@@ -661,6 +673,43 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         );
 
         canvas.drawImageRect(_tileset, source, destination, paint);
+      }
+    }
+  }
+
+  void _drawTileCoordinates({
+    required Canvas canvas,
+    required TileMap map,
+    required Offset offset,
+    required double drawTileSize,
+  }) {
+    final textStyle = TextStyle(
+      color: const Color(0xFFF2E5C9),
+      fontSize: math.max(7, drawTileSize * 0.18),
+      fontWeight: FontWeight.w700,
+      shadows: const [
+        Shadow(
+          color: Color(0xCC000000),
+          offset: Offset(0, 1),
+          blurRadius: 1,
+        ),
+      ],
+    );
+
+    for (var row = 0; row < map.height; row++) {
+      for (var col = 0; col < map.width; col++) {
+        final left = offset.dx + col * drawTileSize;
+        final top = offset.dy + row * drawTileSize;
+        final rect = Rect.fromLTWH(left, top, drawTileSize, drawTileSize);
+        if (!rect.overlaps(Offset.zero & Size(game.size.x, game.size.y))) {
+          continue;
+        }
+        final painter = TextPainter(
+          text: TextSpan(text: '$col,$row', style: textStyle),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout(maxWidth: drawTileSize - 4);
+        painter.paint(canvas, Offset(left + 2, top + 2));
       }
     }
   }

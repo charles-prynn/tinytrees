@@ -88,7 +88,7 @@ void main() {
     expect(find.text('Inventory'), findsOneWidget);
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('User'), findsOneWidget);
-    expect(find.text('Guest'), findsOneWidget);
+    expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
 
@@ -147,7 +147,7 @@ void main() {
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Harvesting'), findsOneWidget);
     expect(find.text('User'), findsOneWidget);
-    expect(find.text('Guest'), findsOneWidget);
+    expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
     expect(find.text('Logout'), findsOneWidget);
   });

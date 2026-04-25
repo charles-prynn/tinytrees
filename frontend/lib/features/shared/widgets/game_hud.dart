@@ -164,6 +164,7 @@ class TopBar extends ConsumerWidget {
                               : UserTopBarSection(
                                 showDivider: true,
                                 auth: auth,
+                                player: player,
                                 onRegisterPressed: onRegistrationPressed,
                                 onLogout:
                                     () =>
@@ -581,12 +582,14 @@ class UserTopBarSection extends StatelessWidget {
     super.key,
     required this.showDivider,
     required this.auth,
+    required this.player,
     required this.onRegisterPressed,
     required this.onLogout,
   });
 
   final bool showDivider;
   final AsyncValue<AuthSession?> auth;
+  final AsyncValue<PlayerState> player;
   final VoidCallback onRegisterPressed;
   final VoidCallback onLogout;
 
@@ -609,11 +612,29 @@ class UserTopBarSection extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: auth.when(
                 data:
-                    (value) => UserDetails(
-                      username: value?.user.displayName ?? 'Guest',
-                      showRegister: value?.user.provider == 'guest',
-                      onRegister: onRegisterPressed,
-                      onLogout: onLogout,
+                    (value) => player.when(
+                      data:
+                          (playerValue) => UserDetails(
+                            username: value?.user.displayName ?? 'Guest',
+                            dbPositionLabel: dbPositionLabel(playerValue),
+                            showRegister: value?.user.provider == 'guest',
+                            onRegister: onRegisterPressed,
+                            onLogout: onLogout,
+                          ),
+                      loading:
+                          () => UserDetails(
+                            username: value?.user.displayName ?? 'Guest',
+                            showRegister: value?.user.provider == 'guest',
+                            onRegister: onRegisterPressed,
+                            onLogout: onLogout,
+                          ),
+                      error:
+                          (_, _) => UserDetails(
+                            username: value?.user.displayName ?? 'Guest',
+                            showRegister: value?.user.provider == 'guest',
+                            onRegister: onRegisterPressed,
+                            onLogout: onLogout,
+                          ),
                     ),
                 loading:
                     () => const Column(
@@ -831,12 +852,14 @@ class UserDetails extends StatelessWidget {
   const UserDetails({
     super.key,
     required this.username,
+    this.dbPositionLabel,
     this.showRegister = false,
     this.onRegister,
     required this.onLogout,
   });
 
   final String username;
+  final String? dbPositionLabel;
   final bool showRegister;
   final VoidCallback? onRegister;
   final VoidCallback onLogout;
@@ -860,7 +883,7 @@ class UserDetails extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         Text(
-          username,
+          dbPositionLabel == null ? username : '$username  $dbPositionLabel',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -883,6 +906,12 @@ class UserDetails extends StatelessWidget {
       ],
     );
   }
+}
+
+String dbPositionLabel(PlayerState player) {
+  final dbX = player.movement?.fromX ?? player.x;
+  final dbY = player.movement?.fromY ?? player.y;
+  return 'DB $dbX,$dbY';
 }
 
 class _UserActionButton extends StatelessWidget {
