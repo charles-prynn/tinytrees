@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const defaultPlayerSpeedTilesPerSecond = 2.0
+const defaultPlayerSpeedTilesPerSecond = 3.0
 
 var ErrInvalidMoveTarget = errors.New("move target is not walkable")
 

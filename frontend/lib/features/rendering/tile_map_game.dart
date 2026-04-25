@@ -165,7 +165,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   final Map<String, Image> _entityImages;
   final TileRenderConfig _renderConfig;
   final bool _showDebugLabels;
-  static const _playerRenderSmoothingSeconds = 0.24;
+  static const _playerRenderSmoothingSeconds = 0.36;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
