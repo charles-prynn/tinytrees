@@ -1,20 +1,26 @@
-API_BASE_URL ?= http://localhost:8080
-WEBSOCKET_BASE_URL ?= ws://localhost:8080
+API_BASE_URL ?= http://localhost:$(PORT)
+WEBSOCKET_BASE_URL ?= ws://localhost:$(PORT)
+PORT?=8080
+SCHEME?=http
+HOST_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1)
+DEVICE_API_BASE_URL ?= $(SCHEME)://$(HOST_IP):$(PORT)
+DEVICE_WEBSOCKET_BASE_URL ?= wss://$(HOST_IP):$(PORT)
 DATABASE_URL ?= postgres://app:app@localhost:5432/app?sslmode=disable
 ACCESS_TOKEN_SECRET ?= change-me-access
 REFRESH_TOKEN_SECRET ?= change-me-refresh
 ACCESS_TOKEN_TTL ?= 15m
 REFRESH_TOKEN_TTL ?= 720h
-ALLOWED_ORIGINS ?= http://localhost:3000,http://localhost:8080
+ALLOWED_ORIGINS ?= http://localhost:3000,http://localhost:$(PORT)
 FLUTTER_RUN_ARGS ?=
 DEBUG_FPS ?= false
 IOS_SIMULATOR ?= iPhone 17
 IOS_DEVICE_ID ?=
+IOS_DEVICE_NAME ?=
 IOS_RUN_DIR ?= /tmp/woodcutting-game-ios-run
 IOS_FLUTTER_CONFIG_HOME ?= /tmp/woodcutting-game-flutter-config
 IOS_FLUTTER_BUILD_DIR ?= ../../../../../tmp/woodcutting-game-flutter-build
 
-.PHONY: help run frontend web ios-flutter-config ios-clean-xattrs ios-sim-open ios-sim-boot ios-sim-sync ios-sim-build ios-sim-run ios-sim-list backend backend-local backend-up backend-down db-up db-down migrate-up migrate-down migrate-prod dev test clean
+.PHONY: help run frontend web ios-flutter-config ios-clean-xattrs ios-sim-open ios-sim-boot ios-sim-sync ios-sim-build ios-sim-run ios-sim-list ios-device-list ios-device-run print-host-ip backend backend-local backend-up backend-down db-up db-down migrate-up migrate-down migrate-prod dev test clean
 
 help:
 	@echo "Targets:"
@@ -29,6 +35,9 @@ help:
 	@echo "  make ios-sim-boot   Boot the configured iOS simulator"
 	@echo "  make ios-sim-open   Open Simulator.app"
 	@echo "  make ios-sim-list   List available iOS simulators"
+	@echo "  make ios-device-list List Flutter-visible physical/wireless Apple devices"
+	@echo "  make ios-device-run Run the Flutter app on a physical iPhone over USB or Wi-Fi"
+	@echo "  make print-host-ip  Show the Mac IP address used for device builds"
 	@echo "  make backend        Run API + Postgres with Docker Compose"
 	@echo "  make backend-local  Run the Go API locally against localhost Postgres"
 	@echo "  make backend-up     Start API + Postgres in the background"
@@ -66,6 +75,12 @@ ios-sim-open:
 ios-sim-list:
 	xcrun simctl list devices available
 
+ios-device-list:
+	cd frontend && flutter devices
+
+print-host-ip:
+	@echo $(HOST_IP)
+
 ios-sim-boot: ios-sim-open
 	@if [ -n "$(IOS_DEVICE_ID)" ]; then \
 		xcrun simctl boot "$(IOS_DEVICE_ID)" || true; \
@@ -91,6 +106,16 @@ ios-sim-run: backend-up ios-flutter-config ios-clean-xattrs ios-sim-boot
 		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_ID)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
 	else \
 		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_SIMULATOR)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
+	fi
+
+ios-device-run: backend-up ios-flutter-config ios-clean-xattrs
+	@if [ -n "$(IOS_DEVICE_ID)" ]; then \
+		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_ID)" --dart-define=API_BASE_URL=$(DEVICE_API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(DEVICE_WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
+	elif [ -n "$(IOS_DEVICE_NAME)" ]; then \
+		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_NAME)" --dart-define=API_BASE_URL=$(DEVICE_API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(DEVICE_WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
+	else \
+		echo "Set IOS_DEVICE_ID or IOS_DEVICE_NAME. Use 'make ios-device-list' to discover the device."; \
+		exit 1; \
 	fi
 
 backend:

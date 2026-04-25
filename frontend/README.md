@@ -9,6 +9,33 @@ flutter pub get
 flutter run --dart-define=API_BASE_URL=http://localhost:8080 --dart-define=WEBSOCKET_BASE_URL=ws://localhost:8080
 ```
 
+## iPhone Wireless Testing
+
+For a real iPhone on the same Wi-Fi network as your Mac, do not use `localhost`. The phone needs your Mac's LAN IP.
+
+From the repo root:
+
+```sh
+make ios-device-list
+make print-host-ip
+IOS_DEVICE_NAME="Charles’s iPhone" make ios-device-run
+```
+
+You can also use `IOS_DEVICE_ID=<flutter-device-id>` instead of `IOS_DEVICE_NAME`.
+
+This target:
+
+- starts the local backend with Docker Compose
+- uses your Mac's detected LAN IP for `API_BASE_URL` and `WEBSOCKET_BASE_URL`
+- runs the Flutter app on the selected physical device
+
+Before the first wireless run, pair the phone in Xcode:
+
+1. Connect the iPhone once with USB.
+2. Open Xcode and enable the device for development.
+3. In Xcode's Devices and Simulators window, enable network connection for the device.
+4. Make sure the iPhone and Mac stay on the same Wi-Fi network.
+
 ## Structure
 
 - `lib/app`: application root and theme

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -153,10 +152,8 @@ class GameSocket {
             : base.scheme == 'http'
             ? 'ws'
             : base.scheme;
-    final queryParameters = <String, String>{};
-    if (kIsWeb) {
-      queryParameters['access_token'] = accessToken;
-    }
+    final queryParameters = Map<String, String>.from(base.queryParameters);
+    queryParameters['access_token'] = accessToken;
     return base
         .replace(
           scheme: scheme,

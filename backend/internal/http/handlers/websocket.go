@@ -45,10 +45,14 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
 			if h.allowWSOrigin == nil {
 				return true
 			}
-			return h.allowWSOrigin(r, r.Header.Get("Origin"))
+			return h.allowWSOrigin(r, origin)
 		},
 	}
 
