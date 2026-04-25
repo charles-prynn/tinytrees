@@ -45,6 +45,11 @@ func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Playe
 	if err != nil {
 		return domain.Player{}, err
 	}
+	if lifecycle.state == playerStateMoving {
+		point := currentPlayerPoint(lifecycle.player, s.now())
+		lifecycle.player.X = point.X
+		lifecycle.player.Y = point.Y
+	}
 	lifecycle.player.Action = lifecycle.action
 	return s.attachSkills(ctx, userID, lifecycle.player)
 }

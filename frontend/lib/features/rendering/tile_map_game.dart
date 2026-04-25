@@ -165,7 +165,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   Object? _mapLayerKey;
   bool _mapLayerBuildQueued = false;
   PlayerState? _player;
-  _PlayerVisualMotion? _playerVisualMotion;
   _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
   double _panX = 0;
   double _panY = 0;
@@ -176,13 +175,16 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   PlayerState? get player => _player;
 
   set player(PlayerState? value) {
-    final currentPosition = _playerPosition();
+    final previous = _player;
     _player = value;
-    _playerVisualMotion = _visualMotionFrom(
-      next: value,
-      currentPosition: currentPosition,
-      now: DateTime.now().toUtc(),
+    if (previous == null || value == null) {
+      return;
+    }
+    final delta = Offset(
+      (value.x - previous.x).toDouble(),
+      (value.y - previous.y).toDouble(),
     );
+    _lastPlayerDirection = _directionForDelta(delta);
   }
 
   set currentMap(TileMap? value) {
@@ -376,12 +378,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   void facePlayer(PlayerFacing facing) {
-    final direction = _PlayerDirection.fromFacing(facing);
-    _lastPlayerDirection = direction;
-    final motion = _playerVisualMotion;
-    if (motion != null) {
-      _playerVisualMotion = motion.copyWith(finalDirection: direction);
-    }
+    _lastPlayerDirection = _PlayerDirection.fromFacing(facing);
   }
 
   void showWalkIconAt(math.Point<int> tile) {
@@ -879,17 +876,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   _PlayerPose? _playerPose() {
-    final visualMotion = _playerVisualMotion;
-    if (visualMotion != null) {
-      return _poseOnPath(
-        path: visualMotion.path,
-        distance:
-            (_elapsedSeconds - visualMotion.startedAtSeconds) *
-            visualMotion.speedTilesPerSecond,
-        finalDirection: visualMotion.finalDirection,
-      );
-    }
-
     return _serverPlayerPose(DateTime.now().toUtc());
   }
 
@@ -911,68 +897,17 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         isMoving: false,
       );
     }
-    if (!now.isBefore(movement.arrivesAt)) {
-      return _PlayerPose(
-        position: Offset(
-          movement.targetX.toDouble(),
-          movement.targetY.toDouble(),
-        ),
-        direction: _lastPlayerDirection,
-        isMoving: false,
-      );
-    }
-    if (!now.isAfter(movement.startedAt)) {
-      final first = movement.path.first;
-      return _PlayerPose(
-        position: Offset(first.x.toDouble(), first.y.toDouble()),
-        direction: _lastPlayerDirection,
-        isMoving: true,
-      );
-    }
-
-    final elapsed = now.difference(movement.startedAt).inMilliseconds / 1000;
-    return _poseOnPath(
-      path:
-          movement.path
-              .map((point) => Offset(point.x.toDouble(), point.y.toDouble()))
-              .toList(),
-      distance: elapsed * movement.speedTilesPerSecond,
+    final direction = _directionForDelta(
+      Offset(
+        (movement.targetX - current.x).toDouble(),
+        (movement.targetY - current.y).toDouble(),
+      ),
     );
-  }
-
-  _PlayerPose _poseOnPath({
-    required List<Offset> path,
-    required double distance,
-    _PlayerDirection? finalDirection,
-  }) {
-    var remainingDistance = math.max(0, distance);
-
-    for (var index = 0; index < path.length - 1; index++) {
-      final from = path[index];
-      final to = path[index + 1];
-      final segmentDistance = (to - from).distance;
-      if (remainingDistance > segmentDistance) {
-        remainingDistance -= segmentDistance;
-        continue;
-      }
-
-      final direction = _directionForDelta(to - from);
-      _lastPlayerDirection = direction;
-      final localProgress =
-          segmentDistance == 0 ? 1.0 : remainingDistance / segmentDistance;
-      return _PlayerPose(
-        position: Offset.lerp(from, to, localProgress) ?? to,
-        direction: direction,
-        isMoving: true,
-      );
-    }
-
-    final direction = finalDirection ?? _lastPlayerDirection;
     _lastPlayerDirection = direction;
     return _PlayerPose(
-      position: path.last,
+      position: Offset(current.x.toDouble(), current.y.toDouble()),
       direction: direction,
-      isMoving: false,
+      isMoving: now.isBefore(movement.arrivesAt),
     );
   }
 
@@ -984,65 +919,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return delta.dy > 0 ? _PlayerDirection.front : _PlayerDirection.back;
     }
     return _lastPlayerDirection;
-  }
-
-  _PlayerVisualMotion? _visualMotionFrom(
-    {required PlayerState? next,
-    required Offset? currentPosition,
-    required DateTime now,}
-  ) {
-    if (next?.action != null) {
-      return null;
-    }
-
-    final movement = next?.movement;
-    if (movement == null || movement.path.isEmpty || currentPosition == null) {
-      return null;
-    }
-
-    final serverPose = _serverPlayerPoseFor(next, now);
-    if (serverPose == null) {
-      return null;
-    }
-
-    // If the authoritative pose is no longer close to the rendered pose,
-    // snap back to server state instead of animating from stale local motion.
-    if ((serverPose.position - currentPosition).distance > 0.75) {
-      return null;
-    }
-
-    final backendPath =
-        movement.path
-            .map((point) => Offset(point.x.toDouble(), point.y.toDouble()))
-            .toList();
-    final startIndex = _nearestPathIndex(backendPath, currentPosition);
-    final path = <Offset>[
-      currentPosition,
-      ...backendPath.skip(math.min(startIndex + 1, backendPath.length - 1)),
-    ];
-
-    if (path.length == 1) {
-      path.add(backendPath.last);
-    }
-
-    return _PlayerVisualMotion(
-      path: path,
-      startedAtSeconds: _elapsedSeconds,
-      speedTilesPerSecond: movement.speedTilesPerSecond,
-    );
-  }
-
-  int _nearestPathIndex(List<Offset> path, Offset point) {
-    var nearestIndex = 0;
-    var nearestDistance = double.infinity;
-    for (var index = 0; index < path.length; index++) {
-      final distance = (path[index] - point).distanceSquared;
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-    }
-    return nearestIndex;
   }
 
   double _clampPanX(double panX, TileMap map, double tileSize) {
@@ -1141,29 +1017,6 @@ class _PlayerPose {
   final Offset position;
   final _PlayerDirection direction;
   final bool isMoving;
-}
-
-class _PlayerVisualMotion {
-  const _PlayerVisualMotion({
-    required this.path,
-    required this.startedAtSeconds,
-    required this.speedTilesPerSecond,
-    this.finalDirection,
-  });
-
-  final List<Offset> path;
-  final double startedAtSeconds;
-  final double speedTilesPerSecond;
-  final _PlayerDirection? finalDirection;
-
-  _PlayerVisualMotion copyWith({_PlayerDirection? finalDirection}) {
-    return _PlayerVisualMotion(
-      path: path,
-      startedAtSeconds: startedAtSeconds,
-      speedTilesPerSecond: speedTilesPerSecond,
-      finalDirection: finalDirection ?? this.finalDirection,
-    );
-  }
 }
 
 class _WalkIconEffect {

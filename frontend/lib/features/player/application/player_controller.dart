@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/game_socket.dart';
 import '../data/player_repository.dart';
 import '../domain/player_state.dart';
 
@@ -10,7 +11,15 @@ class PlayerController extends AsyncNotifier<PlayerState> {
   int _moveSequence = 0;
 
   @override
-  Future<PlayerState> build() {
+  Future<PlayerState> build() async {
+    final socket = ref.watch(gameSocketProvider);
+    final subscription = socket.messagesOfType('player.updated').listen((data) {
+      final player = data['player'];
+      if (player is Map<String, dynamic>) {
+        state = AsyncData(PlayerState.fromJson(player));
+      }
+    });
+    ref.onDispose(subscription.cancel);
     return ref.watch(playerStateProvider.future);
   }
 

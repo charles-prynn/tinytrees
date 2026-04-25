@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,7 +27,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   PlayerState? _lastPlayer;
   String? _holdLabel;
   int _interactionSequence = 0;
-  Timer? _actionPoller;
   bool _inventoryOpen = false;
   bool _registrationOpen = false;
 
@@ -65,7 +62,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           _lastPlayer = value;
           _game.setPlayer(value);
         }
-        _syncActionPoller(value.action);
       });
     });
     ref.listenManual(authControllerProvider, (_, next) {
@@ -77,12 +73,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         }
       });
     });
-  }
-
-  @override
-  void dispose() {
-    _actionPoller?.cancel();
-    super.dispose();
   }
 
   @override
@@ -206,26 +196,5 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     if (!mounted || !started || sequence != _interactionSequence) {
       return;
     }
-  }
-
-  void _syncActionPoller(PlayerAction? action) {
-    if (action == null) {
-      _actionPoller?.cancel();
-      _actionPoller = null;
-      return;
-    }
-    if (_actionPoller != null) {
-      return;
-    }
-    _actionPoller = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!mounted) {
-        return;
-      }
-      ref.invalidate(playerControllerProvider);
-      if (!DateTime.now().toUtc().isBefore(action.endsAt)) {
-        _actionPoller?.cancel();
-        _actionPoller = null;
-      }
-    });
   }
 }

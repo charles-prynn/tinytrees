@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	wsWriteTimeout = 10 * time.Second
-	wsReadLimit    = 32 * 1024
+	wsWriteTimeout          = 10 * time.Second
+	wsReadLimit             = 32 * 1024
+	wsPlayerUpdateInterval  = 200 * time.Millisecond
+	wsInventoryUpdatePeriod = time.Second
 )
 
 type wsClientMessage struct {
@@ -85,8 +87,10 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, write func(wsServerMessage) error) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	playerTicker := time.NewTicker(wsPlayerUpdateInterval)
+	inventoryTicker := time.NewTicker(wsInventoryUpdatePeriod)
+	defer playerTicker.Stop()
+	defer inventoryTicker.Stop()
 
 	var lastPlayerJSON []byte
 	var lastActionJSON []byte
@@ -96,7 +100,7 @@ func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, wri
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-playerTicker.C:
 			player, err := h.players.Get(ctx, userID)
 			if err != nil {
 				continue
@@ -122,7 +126,7 @@ func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, wri
 				}
 				lastActionJSON = actionJSON
 			}
-
+		case <-inventoryTicker.C:
 			items, err := h.inventory.List(ctx, userID)
 			if err != nil {
 				continue

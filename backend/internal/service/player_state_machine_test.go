@@ -90,6 +90,41 @@ func TestPlayerLifecycleMoveReturnsAttachedSkills(t *testing.T) {
 	}
 }
 
+func TestPlayerGetProjectsCurrentMovementPosition(t *testing.T) {
+	userID := uuid.New()
+	now := time.Date(2026, time.April, 25, 10, 0, 0, 0, time.UTC)
+	players := &memoryPlayerStore{
+		player: domain.Player{
+			UserID: userID,
+			X:      1,
+			Y:      1,
+			Movement: &domain.PlayerMovement{
+				FromX:               1,
+				FromY:               1,
+				TargetX:             3,
+				TargetY:             1,
+				Path:                []domain.Point{{X: 1, Y: 1}, {X: 2, Y: 1}, {X: 3, Y: 1}},
+				StartedAt:           now.Add(-600 * time.Millisecond),
+				ArrivesAt:           now.Add(time.Second),
+				SpeedTilesPerSecond: defaultPlayerSpeedTilesPerSecond,
+			},
+		},
+	}
+	service := NewPlayerService(players, &memoryMap{}, &memoryEntities{}, nil)
+	service.now = func() time.Time { return now }
+
+	player, err := service.Get(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if player.X != 2 || player.Y != 1 {
+		t.Fatalf("expected projected position (2,1), got (%d,%d)", player.X, player.Y)
+	}
+	if player.Movement == nil {
+		t.Fatal("expected movement to remain active")
+	}
+}
+
 func TestActionLifecycleHarvestRejectedWhileMoving(t *testing.T) {
 	userID := uuid.New()
 	now := time.Date(2026, time.April, 25, 10, 0, 0, 0, time.UTC)
