@@ -33,7 +33,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void initState() {
     super.initState();
-    _game = TileMapGame(showFps: ref.read(appConfigProvider).debugFps);
+    final config = ref.read(appConfigProvider);
+    _game = TileMapGame(
+      showFps: config.debugFps,
+      showCoordinateDebug: config.debugCord,
+    );
     ref.listenManual<AsyncValue<TileMap>>(mapControllerProvider, (_, next) {
       next.whenData((value) {
         if (!identical(_lastTileMap, value)) {
@@ -101,6 +105,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           GameHud(
             inventoryOpen: _inventoryOpen,
             registrationOpen: _registrationOpen,
+            showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
             onInventoryPressed: _toggleInventory,
             onInventoryClosed: _toggleInventory,
             onRegistrationPressed: _openRegistration,

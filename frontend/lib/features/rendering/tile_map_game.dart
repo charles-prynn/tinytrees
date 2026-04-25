@@ -17,11 +17,14 @@ class TileMapGame extends FlameGame with PanDetector {
   TileMapGame({
     TileRenderConfig renderConfig = const TileRenderConfig(),
     bool showFps = false,
+    bool showCoordinateDebug = false,
   }) : _renderConfig = renderConfig,
-       _showFps = showFps;
+       _showFps = showFps,
+       _showCoordinateDebug = showCoordinateDebug;
 
   final TileRenderConfig _renderConfig;
   final bool _showFps;
+  final bool _showCoordinateDebug;
   TileMap? _pendingMap;
   List<WorldEntity> _pendingEntities = const [];
   PlayerState? _pendingPlayer;
@@ -46,7 +49,7 @@ class TileMapGame extends FlameGame with PanDetector {
       playerSprite: playerSprite,
       entityImages: entityImages,
       renderConfig: _renderConfig,
-      showDebugLabels: _showFps,
+      showDebugLabels: _showCoordinateDebug,
     );
     await add(_renderer!);
     if (_showFps) {

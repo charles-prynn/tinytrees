@@ -14,6 +14,7 @@ class GameHud extends ConsumerWidget {
     super.key,
     required this.inventoryOpen,
     required this.registrationOpen,
+    required this.showCoordinateDebug,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
     required this.onRegistrationPressed,
@@ -22,6 +23,7 @@ class GameHud extends ConsumerWidget {
 
   final bool inventoryOpen;
   final bool registrationOpen;
+  final bool showCoordinateDebug;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
   final VoidCallback onRegistrationPressed;
@@ -37,6 +39,7 @@ class GameHud extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: TopBar(
               inventoryOpen: inventoryOpen,
+              showCoordinateDebug: showCoordinateDebug,
               onInventoryPressed: onInventoryPressed,
               onRegistrationPressed: onRegistrationPressed,
             ),
@@ -68,6 +71,7 @@ class TopBar extends ConsumerWidget {
   const TopBar({
     super.key,
     required this.inventoryOpen,
+    required this.showCoordinateDebug,
     required this.onInventoryPressed,
     required this.onRegistrationPressed,
   });
@@ -79,6 +83,7 @@ class TopBar extends ConsumerWidget {
   static const _segmentCount = 4;
 
   final bool inventoryOpen;
+  final bool showCoordinateDebug;
   final VoidCallback onInventoryPressed;
   final VoidCallback onRegistrationPressed;
 
@@ -165,6 +170,7 @@ class TopBar extends ConsumerWidget {
                                 showDivider: true,
                                 auth: auth,
                                 player: player,
+                                showCoordinateDebug: showCoordinateDebug,
                                 onRegisterPressed: onRegistrationPressed,
                                 onLogout:
                                     () =>
@@ -583,6 +589,7 @@ class UserTopBarSection extends StatelessWidget {
     required this.showDivider,
     required this.auth,
     required this.player,
+    required this.showCoordinateDebug,
     required this.onRegisterPressed,
     required this.onLogout,
   });
@@ -590,6 +597,7 @@ class UserTopBarSection extends StatelessWidget {
   final bool showDivider;
   final AsyncValue<AuthSession?> auth;
   final AsyncValue<PlayerState> player;
+  final bool showCoordinateDebug;
   final VoidCallback onRegisterPressed;
   final VoidCallback onLogout;
 
@@ -616,7 +624,10 @@ class UserTopBarSection extends StatelessWidget {
                       data:
                           (playerValue) => UserDetails(
                             username: value?.user.displayName ?? 'Guest',
-                            dbPositionLabel: dbPositionLabel(playerValue),
+                            dbPositionLabel:
+                                showCoordinateDebug
+                                    ? dbPositionLabel(playerValue)
+                                    : null,
                             showRegister: value?.user.provider == 'guest',
                             onRegister: onRegisterPressed,
                             onLogout: onLogout,

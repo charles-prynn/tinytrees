@@ -10,12 +10,14 @@ class AppConfig {
     required this.websocketBaseUrl,
     required this.environment,
     required this.debugFps,
+    required this.debugCord,
   });
 
   final String apiBaseUrl;
   final String websocketBaseUrl;
   final String environment;
   final bool debugFps;
+  final bool debugCord;
 
   factory AppConfig.fromEnvironment() {
     const apiBaseUrl = String.fromEnvironment(
@@ -38,6 +40,7 @@ class AppConfig {
         defaultValue: 'development',
       ),
       debugFps: const bool.fromEnvironment('DEBUG_FPS'),
+      debugCord: const bool.fromEnvironment('DEBUG_CORD'),
     );
   }
 
