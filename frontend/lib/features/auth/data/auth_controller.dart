@@ -1,5 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/game_socket.dart';
+import '../../bootstrap/data/bootstrap_repository.dart';
+import '../../entities/data/entity_repository.dart';
+import '../../inventory/data/inventory_repository.dart';
+import '../../map/application/map_controller.dart';
+import '../../player/application/player_controller.dart';
+import '../../state/data/state_repository.dart';
 import '../domain/auth_session.dart';
 import 'auth_repository.dart';
 
@@ -24,6 +31,7 @@ class AuthController extends AsyncNotifier<AuthSession?> {
         username: username,
         password: password,
       );
+      _refreshGameSession();
       state = AsyncData(session);
     } catch (error, stackTrace) {
       if (previous != null) {
@@ -47,6 +55,7 @@ class AuthController extends AsyncNotifier<AuthSession?> {
         username: username,
         password: password,
       );
+      _refreshGameSession();
       state = AsyncData(session);
     } catch (error, stackTrace) {
       if (previous != null) {
@@ -63,7 +72,19 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       await repository.logout();
+      _refreshGameSession();
       return null;
     });
+  }
+
+  void _refreshGameSession() {
+    ref.invalidate(gameSocketProvider);
+    ref.invalidate(gameSocketConnectionProvider);
+    ref.invalidate(appBootstrapProvider);
+    ref.invalidate(mapControllerProvider);
+    ref.invalidate(worldEntitiesProvider);
+    ref.invalidate(playerControllerProvider);
+    ref.invalidate(inventoryProvider);
+    ref.invalidate(stateSnapshotProvider);
   }
 }
