@@ -73,7 +73,7 @@
       "name": "Revised Boots (leather)"
     }
   },
-  "selectedAnimation": "1h_slash",
+  "selectedAnimation": "slash_128",
   "showTransparencyGrid": true,
   "applyTransparencyMask": false,
   "matchBodyColorEnabled": true,
@@ -382,7 +382,7 @@
   ],
   "credits": [
     {
-      "fileName": "body/bodies/male/1h_slash.png",
+      "fileName": "body/bodies/male/slash_128.png",
       "file": "body/bodies/male",
       "notes": "see details at https://opengameart.org/content/lpc-character-bases; 'Thick' Male Revised Run/Climb by JaidynReiman (based on ElizaWy's LPC Revised)",
       "authors": [
@@ -415,7 +415,7 @@
       ]
     },
     {
-      "fileName": "head/heads/human/male_small/1h_slash.png",
+      "fileName": "head/heads/human/male_small/slash_128.png",
       "file": "head/heads/human/male_small",
       "notes": "original head by Redshrike, reduced size head by ElizaWy",
       "authors": [
@@ -429,7 +429,7 @@
       "urls": []
     },
     {
-      "fileName": "head/faces/male/closing/1h_slash.png",
+      "fileName": "head/faces/male/closing/slash_128.png",
       "file": "head/faces",
       "notes": "Original by Redshrike, Expressions by ElizaWy, mapped to all frames by JaidynReiman",
       "authors": [
@@ -446,7 +446,7 @@
       ]
     },
     {
-      "fileName": "tools/smash/universal/male/1h_slash/axe.png",
+      "fileName": "tools/smash/universal/male/slash_128/axe.png",
       "file": "tools/smash",
       "notes": "",
       "authors": [
@@ -464,7 +464,7 @@
       ]
     },
     {
-      "fileName": "arms/bracers/male/1h_slash.png",
+      "fileName": "arms/bracers/male/slash_128.png",
       "file": "arms/bracers",
       "notes": "original by wulax, adjustments by Makrohn, climb/emote by JaidynReiman",
       "authors": [
@@ -482,7 +482,7 @@
       ]
     },
     {
-      "fileName": "torso/clothes/shortsleeve/shortsleeve/male/1h_slash.png",
+      "fileName": "torso/clothes/shortsleeve/shortsleeve/male/slash_128.png",
       "file": "torso/clothes/shortsleeve/shortsleeve/male",
       "notes": "original by ElizaWy walkcycle only; extended to all animations by adapting from longsleeve, edited to v3 bases by bluecarrot16; cleanup and climb/jump/run/sit/emote/revised combat adapted from LPC Revised by JaidynReiman",
       "authors": [
@@ -506,7 +506,7 @@
       ]
     },
     {
-      "fileName": "legs/pants2/male/1h_slash.png",
+      "fileName": "legs/pants2/male/slash_128.png",
       "file": "legs/pants2/male",
       "notes": "original overalls by ElizaWy, base animations adapted from v3 overalls by bluecarrot16, pants by JaidynReiman",
       "authors": [
@@ -527,7 +527,7 @@
       ]
     },
     {
-      "fileName": "torso/waist/belt_leather2/male/1h_slash/leather.png",
+      "fileName": "torso/waist/belt_leather2/male/slash_128/leather.png",
       "file": "torso/waist/belt_leather2",
       "notes": "",
       "authors": [
@@ -544,7 +544,7 @@
       ]
     },
     {
-      "fileName": "beards/beard/medium/1h_slash.png",
+      "fileName": "beards/beard/medium/slash_128.png",
       "file": "beards/beard/medium",
       "notes": "",
       "authors": [
@@ -559,7 +559,7 @@
       ]
     },
     {
-      "fileName": "feet/boots/revised/male/1h_slash/leather.png",
+      "fileName": "feet/boots/revised/male/slash_128/leather.png",
       "file": "feet/boots/revised/male",
       "notes": "original overalls and boots by ElizaWy, base animations adapted from v3 overalls by bluecarrot16, boots by JaidynReiman",
       "authors": [

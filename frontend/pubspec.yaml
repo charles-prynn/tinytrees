@@ -70,7 +70,24 @@ flutter:
     - assets/images/entities/
     - assets/images/sprites/
     - assets/images/sprites/character/
-    - assets/images/sprites/character/items/
+    - assets/images/sprites/character/standard/
+    - assets/images/sprites/character/standard/idle/
+    - assets/images/sprites/character/standard/walk/
+    - assets/images/sprites/character/standard/run/
+    - assets/images/sprites/character/standard/slash/
+    - assets/images/sprites/character/standard/1h_halfslash/
+    - assets/images/sprites/character/standard/1h_backslash/
+    - assets/images/sprites/character/standard/thrust/
+    - assets/images/sprites/character/standard/shoot/
+    - assets/images/sprites/character/standard/hurt/
+    - assets/images/sprites/character/standard/climb/
+    - assets/images/sprites/character/standard/jump/
+    - assets/images/sprites/character/standard/sit/
+    - assets/images/sprites/character/standard/emote/
+    - assets/images/sprites/character/standard/spellcast/
+    - assets/images/sprites/character/standard/combat/
+    - assets/images/sprites/character/tools/
+    - assets/images/sprites/character/tools/slash/
     - assets/images/ui/bar/
     - assets/images/ui/bar/icons/
     - assets/images/ui/bar/skills/

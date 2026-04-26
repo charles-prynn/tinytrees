@@ -1,5 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
@@ -12,7 +13,9 @@ import '../map/application/map_controller.dart';
 import '../map/domain/tile_map.dart';
 import '../player/application/player_controller.dart';
 import '../player/domain/player_state.dart';
+import '../rendering/player_character.dart';
 import '../rendering/tile_map_game.dart';
+import 'widgets/animation_debug_panel.dart';
 import 'widgets/game_loading_overlay.dart';
 import 'widgets/game_hud.dart';
 
@@ -33,10 +36,19 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   bool _inventoryOpen = false;
   bool _loginOpen = false;
   bool _registrationOpen = false;
+  bool _animationDebugOpen = false;
+  PlayerCharacterAnimation? _debugAnimationOverride;
+  final List<DateTime> _tripleThreePresses = <DateTime>[];
+  final FocusNode _keyboardFocusNode = FocusNode(debugLabel: 'main-screen');
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _keyboardFocusNode.requestFocus();
+      }
+    });
     final config = ref.read(appConfigProvider);
     _game = TileMapGame(
       showFps: config.debugFps,
@@ -87,6 +99,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final map = ref.watch(mapControllerProvider);
     final entities = ref.watch(worldEntitiesProvider);
@@ -112,51 +130,115 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         !inventory.hasValue;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onLongPressStart:
-                  (details) =>
-                      _setHoldLabel(_game.holdLabelAt(details.localPosition)),
-              onLongPressMoveUpdate:
-                  (details) =>
-                      _setHoldLabel(_game.holdLabelAt(details.localPosition)),
-              onLongPressEnd: (_) => _setHoldLabel(null),
-              onLongPressUp: () => _setHoldLabel(null),
-              onLongPressCancel: () => _setHoldLabel(null),
-              onTapUp: _handleTapUp,
-              child: GameWidget(game: _game),
-            ),
+      body: KeyboardListener(
+        autofocus: true,
+        focusNode: _keyboardFocusNode,
+        onKeyEvent: _handleKeyEvent,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => _refocusKeyboardListener(),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _refocusKeyboardListener,
+                  onLongPressStart:
+                      (details) => _setHoldLabel(
+                        _game.holdLabelAt(details.localPosition),
+                      ),
+                  onLongPressMoveUpdate:
+                      (details) => _setHoldLabel(
+                        _game.holdLabelAt(details.localPosition),
+                      ),
+                  onLongPressEnd: (_) => _setHoldLabel(null),
+                  onLongPressUp: () => _setHoldLabel(null),
+                  onLongPressCancel: () => _setHoldLabel(null),
+                  onTapUp: _handleTapUp,
+                  child: GameWidget(game: _game),
+                ),
+              ),
+              GameHud(
+                inventoryOpen: _inventoryOpen,
+                loginOpen: _loginOpen,
+                registrationOpen: _registrationOpen,
+                showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
+                onInventoryPressed: _toggleInventory,
+                onInventoryClosed: _toggleInventory,
+                onLoginPressed: _openLogin,
+                onLoginClosed: _closeLogin,
+                onRegistrationPressed: _openRegistration,
+                onRegistrationClosed: _closeRegistration,
+              ),
+              if (loading)
+                GameLoadingOverlay(
+                  mapReady: map.hasValue,
+                  resourcesReady: entities.hasValue,
+                  playerReady: player.hasValue,
+                  inventoryReady: inventory.hasValue,
+                  errorMessage: loadingError,
+                  onRetry: () => retryGameLoad(ref),
+                ),
+              if (!loading && socketState != null)
+                if (socketState != GameSocketConnectionState.connected)
+                  GameConnectionBanner(state: socketState),
+              if (_animationDebugOpen)
+                AnimationDebugPanel(
+                  selectedAnimation: _debugAnimationOverride,
+                  onSelectedAnimation: _setDebugAnimationOverride,
+                  onClose: _toggleAnimationDebugPanel,
+                ),
+            ],
           ),
-          GameHud(
-            inventoryOpen: _inventoryOpen,
-            loginOpen: _loginOpen,
-            registrationOpen: _registrationOpen,
-            showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
-            onInventoryPressed: _toggleInventory,
-            onInventoryClosed: _toggleInventory,
-            onLoginPressed: _openLogin,
-            onLoginClosed: _closeLogin,
-            onRegistrationPressed: _openRegistration,
-            onRegistrationClosed: _closeRegistration,
-          ),
-          if (loading)
-            GameLoadingOverlay(
-              mapReady: map.hasValue,
-              resourcesReady: entities.hasValue,
-              playerReady: player.hasValue,
-              inventoryReady: inventory.hasValue,
-              errorMessage: loadingError,
-              onRetry: () => retryGameLoad(ref),
-            ),
-          if (!loading && socketState != null)
-            if (socketState != GameSocketConnectionState.connected)
-              GameConnectionBanner(state: socketState),
-        ],
+        ),
       ),
     );
+  }
+
+  void _refocusKeyboardListener() {
+    if (_keyboardFocusNode.hasFocus) {
+      return;
+    }
+    _keyboardFocusNode.requestFocus();
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return;
+    }
+    if (event.logicalKey != LogicalKeyboardKey.digit3 &&
+        event.logicalKey != LogicalKeyboardKey.numpad3) {
+      return;
+    }
+    final now = DateTime.now();
+    _tripleThreePresses.removeWhere(
+      (pressedAt) =>
+          now.difference(pressedAt) > const Duration(milliseconds: 800),
+    );
+    _tripleThreePresses.add(now);
+    if (_tripleThreePresses.length >= 3) {
+      _tripleThreePresses.clear();
+      _toggleAnimationDebugPanel();
+    }
+  }
+
+  void _toggleAnimationDebugPanel() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _animationDebugOpen = !_animationDebugOpen;
+    });
+  }
+
+  void _setDebugAnimationOverride(PlayerCharacterAnimation? animation) {
+    _game.setDebugAnimationOverride(animation);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _debugAnimationOverride = animation;
+    });
   }
 
   String? _loadingErrorMessage({

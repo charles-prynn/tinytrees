@@ -128,6 +128,10 @@ class TileMapGame extends FlameGame with PanDetector {
     _renderer?.facePlayer(facing);
   }
 
+  void setDebugAnimationOverride(PlayerCharacterAnimation? animation) {
+    _renderer?.debugAnimationOverride = animation;
+  }
+
   @override
   void onPanUpdate(DragUpdateInfo info) {
     _renderer?.panBy(info.delta.global);
@@ -176,6 +180,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   PlayerState? _player;
   _PlayerRenderMotion? _playerRenderMotion;
   _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
+  PlayerCharacterAnimation? debugAnimationOverride;
   double _panX = 0;
   double _panY = 0;
   double _elapsedSeconds = 0;
@@ -603,11 +608,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required Paint paint,
   }) {
     final animation =
-        player?.action?.type == 'harvest'
+        debugAnimationOverride ??
+        (player?.action?.type == 'harvest'
             ? PlayerCharacterAnimation.slash
             : pose.isMoving
             ? PlayerCharacterAnimation.walk
-            : PlayerCharacterAnimation.idle;
+            : PlayerCharacterAnimation.idle);
     final direction = switch (pose.direction) {
       _PlayerDirection.front => PlayerCharacterDirection.down,
       _PlayerDirection.left => PlayerCharacterDirection.left,
@@ -625,17 +631,77 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawWidth,
       drawHeight,
     );
+    final oversizedDestination = Rect.fromLTWH(
+      footX - drawWidth,
+      footY - drawHeight * 1.5,
+      drawWidth * 2,
+      drawHeight * 2,
+    );
+    final useOversizedAxeSlash =
+        animation == PlayerCharacterAnimation.slash &&
+        _playerCharacter.hasAxeSlashTool;
+    if (useOversizedAxeSlash) {
+      final toolBackground = _playerCharacter.axeSlashBackgroundFrame(
+        direction: direction,
+        elapsedSeconds: _elapsedSeconds,
+      );
+      if (toolBackground != null) {
+        canvas.drawImageRect(
+          toolBackground.image,
+          toolBackground.sourceRect,
+          oversizedDestination,
+          paint,
+        );
+      }
+    }
+    final oversizedCharacterDestination = Rect.fromLTWH(
+      oversizedDestination.left + drawWidth / 2,
+      oversizedDestination.top + drawHeight / 2,
+      drawWidth,
+      drawHeight,
+    );
     for (final layer in _playerCharacter.layers) {
-      final source = _playerCharacter.sourceRectFor(
+      final frame = _playerCharacter.frameFor(
         layer: layer,
         animation: animation,
         direction: direction,
         elapsedSeconds: _elapsedSeconds,
       );
-      if (source == null) {
+      if (frame == null) {
         continue;
       }
-      canvas.drawImageRect(layer.image, source, destination, paint);
+      canvas.drawImageRect(
+        frame.image,
+        frame.sourceRect,
+        useOversizedAxeSlash ? oversizedCharacterDestination : destination,
+        paint,
+      );
+    }
+    if (useOversizedAxeSlash) {
+      final toolForeground = _playerCharacter.axeSlashForegroundFrame(
+        direction: direction,
+        elapsedSeconds: _elapsedSeconds,
+      );
+      if (toolForeground != null) {
+        canvas.drawImageRect(
+          toolForeground.image,
+          toolForeground.sourceRect,
+          oversizedDestination,
+          paint,
+        );
+      }
+      final toolSparks = _playerCharacter.axeSlashSparksFrame(
+        direction: direction,
+        elapsedSeconds: _elapsedSeconds,
+      );
+      if (toolSparks != null) {
+        canvas.drawImageRect(
+          toolSparks.image,
+          toolSparks.sourceRect,
+          oversizedDestination,
+          paint,
+        );
+      }
     }
   }
 
