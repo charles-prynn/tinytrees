@@ -88,7 +88,7 @@ class TileMapGame extends FlameGame with PanDetector {
       if (pending != null) {
         _renderer!.currentMap = pending;
       }
-      _renderer!.entities = _pendingEntities;
+      _renderer!.setEntities(_pendingEntities);
       _renderer!.player = _pendingPlayer;
       if (!_assetsLoaded.isCompleted) {
         _assetsLoaded.complete();
@@ -108,7 +108,7 @@ class TileMapGame extends FlameGame with PanDetector {
 
   void setEntities(List<WorldEntity> entities) {
     _pendingEntities = List.unmodifiable(entities);
-    _renderer?.entities = _pendingEntities;
+    _renderer?.setEntities(_pendingEntities);
   }
 
   void setPlayer(PlayerState player) {
@@ -189,11 +189,21 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   final Map<String, Image> _entityImages;
   final TileRenderConfig _renderConfig;
   final bool _showDebugLabels;
+  final Paint _pixelPaint =
+      Paint()
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false;
+  final Paint _entityBorderPaint =
+      Paint()
+        ..color = const Color(0xFFFFD54F)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
   static const _playerRenderSmoothingSeconds = 0.36;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
   final List<_XpDropEffect> _xpDropEffects = [];
+  final Set<int> _blockedTiles = <int>{};
   Image? _mapLayerImage;
   Object? _mapLayerKey;
   bool _mapLayerBuildQueued = false;
@@ -209,6 +219,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   bool _interactionWarmUpDone = false;
 
   PlayerState? get player => _player;
+
+  void setEntities(List<WorldEntity> value) {
+    entities = value;
+    _rebuildEntityCollisionCache();
+  }
 
   set player(PlayerState? value) {
     final previous = _player;
@@ -250,6 +265,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   set currentMap(TileMap? value) {
     if (!identical(tileMap, value)) {
       tileMap = value;
+      _rebuildEntityCollisionCache();
       _queueMapLayerRebuild();
       _needsCentering = true;
     }
@@ -259,6 +275,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   void onRemove() {
     _mapLayerImage?.dispose();
     _mapLayerImage = null;
+    _blockedTiles.clear();
     super.onRemove();
   }
 
@@ -511,11 +528,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   bool _isTileBlocked(math.Point<int> tile) {
-    return entities.any(
-      (entity) => _entityCollisionBounds(
-        entity,
-      ).contains(Offset(tile.x + 0.5, tile.y + 0.5)),
-    );
+    final map = tileMap;
+    if (map == null) {
+      return false;
+    }
+    return _blockedTiles.contains(tile.y * map.width + tile.x);
   }
 
   Rect _entityCollisionBounds(WorldEntity entity) {
@@ -554,16 +571,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     _panY = _clampPanY(_panY, map, drawTileSize);
 
     final offset = _mapOffset(map, drawTileSize);
-
-    final paint =
-        Paint()
-          ..filterQuality = FilterQuality.none
-          ..isAntiAlias = false;
-    final entityBorderPaint =
-        Paint()
-          ..color = const Color(0xFFFFD54F)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2;
+    final viewport = Offset.zero & Size(game.size.x, game.size.y);
     final sourceColumns = math.max(1, _tileset.width ~/ sourceTileSize);
     _drawMapLayer(
       canvas: canvas,
@@ -572,7 +580,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawTileSize: drawTileSize,
       sourceTileSize: sourceTileSize,
       sourceColumns: sourceColumns,
-      paint: paint,
+      paint: _pixelPaint,
     );
     if (_showDebugLabels) {
       _drawTileCoordinates(
@@ -589,11 +597,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         entity: entity,
         layer: _EntityRenderLayer.background,
         offset: offset,
+        viewport: viewport,
         drawTileSize: drawTileSize,
         sourceTileSize: sourceTileSize,
         sourceColumns: sourceColumns,
-        paint: paint,
-        borderPaint: entityBorderPaint,
+        paint: _pixelPaint,
+        borderPaint: _entityBorderPaint,
       );
     }
 
@@ -603,7 +612,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         pose: playerPose,
         offset: offset,
         drawTileSize: drawTileSize,
-        paint: paint,
+        paint: _pixelPaint,
       );
       _drawXpDrops(
         canvas: canvas,
@@ -619,11 +628,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         entity: entity,
         layer: _EntityRenderLayer.foreground,
         offset: offset,
+        viewport: viewport,
         drawTileSize: drawTileSize,
         sourceTileSize: sourceTileSize,
         sourceColumns: sourceColumns,
-        paint: paint,
-        borderPaint: entityBorderPaint,
+        paint: _pixelPaint,
+        borderPaint: _entityBorderPaint,
       );
     }
 
@@ -633,7 +643,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         effect: effect,
         offset: offset,
         drawTileSize: drawTileSize,
-        paint: paint,
+        paint: _pixelPaint,
       );
     }
   }
@@ -882,11 +892,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final imageHeight = map.height * sourceTileSize;
     final recorder = PictureRecorder();
     final canvas = Canvas(recorder);
-    final paint =
-        Paint()
-          ..filterQuality = FilterQuality.none
-          ..isAntiAlias = false;
-
     _drawMapTiles(
       canvas: canvas,
       map: map,
@@ -894,7 +899,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawTileSize: sourceTileSize.toDouble(),
       sourceTileSize: sourceTileSize,
       sourceColumns: sourceColumns,
-      paint: paint,
+      paint: _pixelPaint,
     );
 
     final picture = recorder.endRecording();
@@ -939,22 +944,17 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
 
     final recorder = PictureRecorder();
     final canvas = Canvas(recorder);
-    final paint =
-        Paint()
-          ..filterQuality = FilterQuality.none
-          ..isAntiAlias = false;
-
     canvas.drawImageRect(
       _tileset,
       Rect.fromLTWH(0, 0, 32, 32),
       const Rect.fromLTWH(0, 0, 32, 32),
-      paint,
+      _pixelPaint,
     );
     canvas.drawImageRect(
       _walkIcon,
       const Rect.fromLTWH(0, 0, 32, 32),
       const Rect.fromLTWH(40, 0, 32, 32),
-      paint,
+      _pixelPaint,
     );
 
     for (final image in _entityImages.values.take(1)) {
@@ -962,7 +962,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         const Rect.fromLTWH(80, 0, 64, 64),
-        paint,
+        _pixelPaint,
       );
     }
 
@@ -987,7 +987,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
             frame.image,
             frame.sourceRect,
             const Rect.fromLTWH(0, 80, 64, 64),
-            paint,
+            _pixelPaint,
           );
         }
         final slashBackground = _playerCharacter.axeSlashBackgroundFrame(
@@ -999,7 +999,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
             slashBackground.image,
             slashBackground.sourceRect,
             const Rect.fromLTWH(72, 80, 128, 128),
-            paint,
+            _pixelPaint,
           );
         }
         final slashForeground = _playerCharacter.axeSlashForegroundFrame(
@@ -1011,7 +1011,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
             slashForeground.image,
             slashForeground.sourceRect,
             const Rect.fromLTWH(72, 80, 128, 128),
-            paint,
+            _pixelPaint,
           );
         }
         final slashSparks = _playerCharacter.axeSlashSparksFrame(
@@ -1023,7 +1023,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
             slashSparks.image,
             slashSparks.sourceRect,
             const Rect.fromLTWH(72, 80, 128, 128),
-            paint,
+            _pixelPaint,
           );
         }
       }
@@ -1095,6 +1095,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required WorldEntity entity,
     required _EntityRenderLayer layer,
     required Offset offset,
+    required Rect viewport,
     required double drawTileSize,
     required int sourceTileSize,
     required int sourceColumns,
@@ -1118,6 +1119,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         visual.drawWidthTiles * drawTileSize,
         visual.drawHeightTiles * drawTileSize,
       );
+      if (!destinationBounds.overlaps(viewport)) {
+        return;
+      }
       _drawEntityVisualLayer(
         canvas: canvas,
         image: image,
@@ -1151,6 +1155,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       math.max(1, entity.width) * drawTileSize,
       math.max(1, entity.height) * drawTileSize,
     );
+    if (!destination.overlaps(viewport)) {
+      return;
+    }
     canvas.drawImageRect(_tileset, source, destination, paint);
     canvas.drawRect(destination.deflate(1), borderPaint);
   }
@@ -1385,6 +1392,33 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       }
     }
     return gained;
+  }
+
+  void _rebuildEntityCollisionCache() {
+    _blockedTiles.clear();
+    final map = tileMap;
+    if (map == null) {
+      return;
+    }
+
+    for (final entity in entities) {
+      final bounds = _entityCollisionBounds(entity);
+      final startX = bounds.left.floor();
+      final endX = bounds.right.ceil();
+      final startY = bounds.top.floor();
+      final endY = bounds.bottom.ceil();
+      for (var y = startY; y < endY; y++) {
+        if (y < 0 || y >= map.height) {
+          continue;
+        }
+        for (var x = startX; x < endX; x++) {
+          if (x < 0 || x >= map.width) {
+            continue;
+          }
+          _blockedTiles.add(y * map.width + x);
+        }
+      }
+    }
   }
 }
 

@@ -27,5 +27,17 @@ flutter:
   assets:
     - assets/images/entities/
     - assets/images/sprites/
+    - assets/images/sprites/character/
+    - assets/images/sprites/character/standard/
+    - assets/images/sprites/character/standard/idle/
+    - assets/images/sprites/character/standard/walk/
+    - assets/images/sprites/character/standard/slash/
+    - assets/images/sprites/character/tools/
+    - assets/images/sprites/character/tools/fishing/
+    - assets/images/sprites/character/tools/slash/
+    - assets/images/sprites/character/tools/thrust/
     - assets/images/tiles/
     - assets/images/ui/
+    - assets/images/ui/bar/
+    - assets/images/ui/bar/icons/
+    - assets/images/ui/bar/skills/
