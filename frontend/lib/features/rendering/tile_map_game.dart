@@ -1063,10 +1063,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final renderPosition =
         _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
     if (movement == null || movement.path.isEmpty) {
+      final motion = _playerRenderMotion;
       return _PlayerPose(
         position: renderPosition,
         direction: _lastPlayerDirection,
-        isMoving: false,
+        isMoving: motion?.isActiveAt(_elapsedSeconds) ?? false,
       );
     }
     final direction = _directionForDelta(
@@ -1245,6 +1246,10 @@ class _PlayerRenderMotion {
   final Offset to;
   final double startedAtSeconds;
   final double endsAtSeconds;
+
+  bool isActiveAt(double elapsedSeconds) {
+    return endsAtSeconds > startedAtSeconds && elapsedSeconds < endsAtSeconds;
+  }
 
   Offset positionAt(double elapsedSeconds) {
     if (endsAtSeconds <= startedAtSeconds) {

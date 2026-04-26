@@ -687,13 +687,13 @@ class UserTopBarSection extends StatelessWidget {
           const TopBarIconWell(
             child: Padding(
               padding: EdgeInsets.all(4),
-              child: Image(
-                image: AssetImage(
-                  'assets/images/ui/bar/icons/user-icon.png.png',
+                child: Image(
+                  image: AssetImage(
+                    'assets/images/ui/bar/icons/user-icon.png',
+                  ),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.none,
                 ),
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.none,
-              ),
             ),
           ),
           const SizedBox(width: 8),
