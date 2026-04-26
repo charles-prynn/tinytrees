@@ -26,6 +26,7 @@ class TileMapGame extends FlameGame with PanDetector {
   final TileRenderConfig _renderConfig;
   final bool _showFps;
   final bool _showCoordinateDebug;
+  final Completer<void> _assetsLoaded = Completer<void>();
   TileMap? _pendingMap;
   List<WorldEntity> _pendingEntities = const [];
   PlayerState? _pendingPlayer;
@@ -34,52 +35,64 @@ class TileMapGame extends FlameGame with PanDetector {
   @override
   Color backgroundColor() => const Color(0xFF10241D);
 
+  Future<void> get assetsLoaded => _assetsLoaded.future;
+
   @override
   Future<void> onLoad() async {
-    final tileset = await images.load('tiles/tile_map.png');
-    final walkIcon = await images.load('sprites/walk_icon.png');
-    final playerCharacter = await PlayerCharacterSheet.load(images);
-    final entityImages = {
-      'animated_autumn_tree': await images.load(
-        'entities/animated_autumn_tree.png',
-      ),
-    };
-    _renderer = TileMapRenderer(
-      tileset: tileset,
-      walkIcon: walkIcon,
-      playerCharacter: playerCharacter,
-      entityImages: entityImages,
-      renderConfig: _renderConfig,
-      showDebugLabels: _showCoordinateDebug,
-    );
-    await add(_renderer!);
-    if (_showFps) {
-      await add(
-        FpsTextComponent<TextPaint>(
-          position: Vector2(12, 92),
-          textRenderer: TextPaint(
-            style: const TextStyle(
-              color: Color(0xFFFFFFFF),
-              fontSize: 14,
-              shadows: [
-                Shadow(
-                  color: Color(0xCC000000),
-                  offset: Offset(1, 1),
-                  blurRadius: 2,
-                ),
-              ],
+    try {
+      final tileset = await images.load('tiles/tile_map.png');
+      final walkIcon = await images.load('sprites/walk_icon.png');
+      final playerCharacter = await PlayerCharacterSheet.load(images);
+      final entityImages = {
+        'animated_autumn_tree': await images.load(
+          'entities/animated_autumn_tree.png',
+        ),
+      };
+      _renderer = TileMapRenderer(
+        tileset: tileset,
+        walkIcon: walkIcon,
+        playerCharacter: playerCharacter,
+        entityImages: entityImages,
+        renderConfig: _renderConfig,
+        showDebugLabels: _showCoordinateDebug,
+      );
+      await add(_renderer!);
+      if (_showFps) {
+        await add(
+          FpsTextComponent<TextPaint>(
+            position: Vector2(12, 92),
+            textRenderer: TextPaint(
+              style: const TextStyle(
+                color: Color(0xFFFFFFFF),
+                fontSize: 14,
+                shadows: [
+                  Shadow(
+                    color: Color(0xCC000000),
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    }
+        );
+      }
 
-    final pending = _pendingMap;
-    if (pending != null) {
-      _renderer!.currentMap = pending;
+      final pending = _pendingMap;
+      if (pending != null) {
+        _renderer!.currentMap = pending;
+      }
+      _renderer!.entities = _pendingEntities;
+      _renderer!.player = _pendingPlayer;
+      if (!_assetsLoaded.isCompleted) {
+        _assetsLoaded.complete();
+      }
+    } catch (error, stackTrace) {
+      if (!_assetsLoaded.isCompleted) {
+        _assetsLoaded.completeError(error, stackTrace);
+      }
+      rethrow;
     }
-    _renderer!.entities = _pendingEntities;
-    _renderer!.player = _pendingPlayer;
   }
 
   void setTileMap(TileMap tileMap) {

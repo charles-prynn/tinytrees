@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +22,12 @@ import 'widgets/game_loading_overlay.dart';
 import 'widgets/game_hud.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
-  const MainScreen({super.key});
+  const MainScreen({
+    super.key,
+    this.waitForGameAssetsDuringLoad = true,
+  });
+
+  final bool waitForGameAssetsDuringLoad;
 
   @override
   ConsumerState<MainScreen> createState() => _MainScreenState();
@@ -28,6 +35,8 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   late final TileMapGame _game;
+  bool _gameAssetsReady = false;
+  String? _gameAssetsError;
   TileMap? _lastTileMap;
   List<WorldEntity>? _lastEntities;
   PlayerState? _lastPlayer;
@@ -54,6 +63,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       showFps: config.debugFps,
       showCoordinateDebug: config.debugCord,
     );
+    if (widget.waitForGameAssetsDuringLoad) {
+      unawaited(_awaitGameAssets());
+    } else {
+      _gameAssetsReady = true;
+    }
     ref.listenManual<AsyncValue<TileMap>>(mapControllerProvider, (_, next) {
       next.whenData((value) {
         if (!identical(_lastTileMap, value)) {
@@ -120,6 +134,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
     final loading =
         loadingError != null ||
+        _gameAssetsError != null ||
+        !_gameAssetsReady ||
         map.isLoading ||
         !map.hasValue ||
         entities.isLoading ||
@@ -172,11 +188,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
               if (loading)
                 GameLoadingOverlay(
+                  assetsReady: _gameAssetsReady,
                   mapReady: map.hasValue,
                   resourcesReady: entities.hasValue,
                   playerReady: player.hasValue,
                   inventoryReady: inventory.hasValue,
-                  errorMessage: loadingError,
+                  errorMessage: loadingError ?? _gameAssetsError,
                   onRetry: () => retryGameLoad(ref),
                 ),
               if (!loading && socketState != null)
@@ -239,6 +256,27 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _debugAnimationOverride = animation;
     });
+  }
+
+  Future<void> _awaitGameAssets() async {
+    try {
+      await _game.assetsLoaded;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gameAssetsReady = true;
+        _gameAssetsError = null;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gameAssetsReady = false;
+        _gameAssetsError = '$error';
+      });
+    }
   }
 
   String? _loadingErrorMessage({

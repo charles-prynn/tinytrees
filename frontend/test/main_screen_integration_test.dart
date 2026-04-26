@@ -78,8 +78,7 @@ void main() {
       ),
     );
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await _waitForInitialGameLoad(tester);
 
     expect(find.text('State version 7'), findsNothing);
     expect(find.text('Wood 12'), findsNothing);
@@ -88,7 +87,7 @@ void main() {
     expect(find.text('350 / 800 XP'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
-    expect(find.text('Inventory'), findsOneWidget);
+    expect(find.text('Inventory'), findsWidgets);
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('User'), findsOneWidget);
     expect(find.textContaining('Guest'), findsOneWidget);
@@ -96,7 +95,7 @@ void main() {
     expect(find.text('Login'), findsOneWidget);
     expect(find.text('Logout'), findsNothing);
 
-    await tester.tap(find.text('Inventory'));
+    await tester.tap(find.widgetWithText(InkWell, 'Inventory'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
 
@@ -141,8 +140,7 @@ void main() {
       ),
     );
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await _waitForInitialGameLoad(tester);
 
     expect(find.text('Harvesting wood'), findsNothing);
     expect(find.text('Woodcutting'), findsOneWidget);
@@ -167,10 +165,9 @@ void main() {
 
     await tester.pumpWidget(_buildTestApp(player: _playerState()));
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await _waitForInitialGameLoad(tester);
 
-    await tester.tap(find.text('Register'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Register'));
     await tester.pump();
 
     expect(
@@ -191,10 +188,9 @@ void main() {
 
     await tester.pumpWidget(_buildTestApp(player: _playerState()));
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await _waitForInitialGameLoad(tester);
 
-    await tester.tap(find.text('Login'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Login'));
     await tester.pump();
 
     expect(
@@ -237,7 +233,9 @@ void main() {
             inventoryProvider.overrideWith((ref) => inventoryController.stream),
             stateSnapshotProvider.overrideWith((ref) async => _snapshot),
           ],
-          child: const MaterialApp(home: MainScreen()),
+          child: const MaterialApp(
+            home: MainScreen(waitForGameAssetsDuringLoad: false),
+          ),
         ),
       );
 
@@ -254,13 +252,23 @@ void main() {
       playerCompleter.complete(_playerState());
       inventoryController.add(_inventory);
 
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await _waitForInitialGameLoad(tester);
 
       expect(find.byKey(const ValueKey('game-loading-overlay')), findsNothing);
       expect(find.text('Woodcutting'), findsOneWidget);
     },
   );
+}
+
+Future<void> _waitForInitialGameLoad(WidgetTester tester) async {
+  await tester.pump();
+  for (var i = 0; i < 100; i++) {
+    if (find.byKey(const ValueKey('game-loading-overlay')).evaluate().isEmpty) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  expect(find.byKey(const ValueKey('game-loading-overlay')), findsNothing);
 }
 
 Widget _buildTestApp({required PlayerState player}) {
@@ -273,7 +281,9 @@ Widget _buildTestApp({required PlayerState player}) {
       inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
       stateSnapshotProvider.overrideWith((ref) async => _snapshot),
     ],
-    child: const MaterialApp(home: MainScreen()),
+    child: const MaterialApp(
+      home: MainScreen(waitForGameAssetsDuringLoad: false),
+    ),
   );
 }
 

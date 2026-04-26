@@ -11,6 +11,7 @@ import 'registration_popup.dart';
 class GameLoadingOverlay extends StatelessWidget {
   const GameLoadingOverlay({
     super.key,
+    required this.assetsReady,
     required this.mapReady,
     required this.resourcesReady,
     required this.playerReady,
@@ -19,6 +20,7 @@ class GameLoadingOverlay extends StatelessWidget {
     required this.onRetry,
   });
 
+  final bool assetsReady;
   final bool mapReady;
   final bool resourcesReady;
   final bool playerReady;
@@ -74,6 +76,12 @@ class GameLoadingOverlay extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 14),
+                          _LoadingStatusRow(
+                            label: 'Assets',
+                            ready: assetsReady,
+                            failed: hasError && !assetsReady,
+                          ),
+                          const SizedBox(height: 8),
                           _LoadingStatusRow(
                             label: 'Map',
                             ready: mapReady,
