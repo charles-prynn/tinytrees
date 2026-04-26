@@ -203,6 +203,51 @@ void main() {
     expect(find.text('Login'), findsWidgets);
   });
 
+  testWidgets('HUD username updates when auth session changes', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final authController = _MutableFakeAuthController();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith(() => authController),
+          tileMapProvider.overrideWith((ref) async => _tileMap),
+          worldEntitiesProvider.overrideWith((ref) async => _entities),
+          playerStateProvider.overrideWith((ref) async => _playerState()),
+          inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
+          stateSnapshotProvider.overrideWith((ref) async => _snapshot),
+        ],
+        child: const MaterialApp(
+          home: MainScreen(waitForGameAssetsDuringLoad: false),
+        ),
+      ),
+    );
+
+    await _waitForInitialGameLoad(tester);
+
+    expect(find.textContaining('Guest'), findsOneWidget);
+
+    authController.setSession(
+      const AuthSession(
+        user: AppUser(
+          id: 'user-1',
+          provider: 'local',
+          displayName: 'player_one',
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('player_one'), findsOneWidget);
+    expect(find.text('Register'), findsNothing);
+    expect(find.text('Login'), findsNothing);
+    expect(find.text('Logout'), findsOneWidget);
+  });
+
   testWidgets(
     'loading overlay stays up until map, entities, player, and inventory load',
     (tester) async {
@@ -298,6 +343,22 @@ class _FakeAuthController extends AuthController {
   @override
   Future<void> logout() async {
     state = const AsyncData(null);
+  }
+}
+
+class _MutableFakeAuthController extends AuthController {
+  AuthSession? _session = const AuthSession(
+    user: AppUser(id: 'user-1', provider: 'guest', displayName: 'Guest'),
+  );
+
+  @override
+  Future<AuthSession?> build() async {
+    return _session;
+  }
+
+  void setSession(AuthSession? session) {
+    _session = session;
+    state = AsyncData(session);
   }
 }
 

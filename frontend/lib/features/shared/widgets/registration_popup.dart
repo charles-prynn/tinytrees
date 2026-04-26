@@ -28,97 +28,64 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0x99000000),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2419),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xAA7C6B48), width: 1),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x99000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const PopupBar(title: 'Register'),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          'Upgrade your guest account with a username and password.',
-                          style: TextStyle(
-                            color: Color(0xFFE3D8C3),
-                            fontSize: 13,
-                            height: 1.35,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        PopupField(
-                          controller: _usernameController,
-                          label: 'Username',
-                          enabled: !_submitting,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 12),
-                        PopupField(
-                          controller: _passwordController,
-                          label: 'Password',
-                          enabled: !_submitting,
-                          obscureText: true,
-                          onSubmitted: (_) => _submit(),
-                        ),
-                        if (_errorMessage != null) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: Color(0xFFF28F7A),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            PopupButton(
-                              label: 'Cancel',
-                              onPressed: _submitting ? null : widget.onClose,
-                            ),
-                            const SizedBox(width: 8),
-                            PopupButton(
-                              label:
-                                  _submitting ? 'Registering...' : 'Register',
-                              highlighted: true,
-                              onPressed: _submitting ? null : _submit,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupBar(),
-                ],
-              ),
+    return PopupPanel(
+      title: 'Register',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Upgrade your guest account with a username and password.',
+            style: TextStyle(
+              color: Color(0xFFE3D8C3),
+              fontSize: 13,
+              height: 1.3,
             ),
           ),
-        ),
+          const SizedBox(height: 12),
+          PopupField(
+            controller: _usernameController,
+            label: 'Username',
+            enabled: !_submitting,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 10),
+          PopupField(
+            controller: _passwordController,
+            label: 'Password',
+            enabled: !_submitting,
+            obscureText: true,
+            onSubmitted: (_) => _submit(),
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _errorMessage!,
+              style: const TextStyle(
+                color: Color(0xFFF28F7A),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              PopupButton(
+                label: 'Cancel',
+                onPressed: _submitting ? null : widget.onClose,
+              ),
+              const SizedBox(width: 8),
+              PopupButton(
+                label: _submitting ? 'Registering...' : 'Register',
+                highlighted: true,
+                onPressed: _submitting ? null : _submit,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -170,6 +137,90 @@ class _RegistrationPopupState extends ConsumerState<RegistrationPopup> {
   }
 }
 
+class PopupPanel extends StatelessWidget {
+  const PopupPanel({
+    super.key,
+    required this.title,
+    required this.child,
+    this.overlayColor = const Color(0x99000000),
+    this.maxWidth = 420,
+    this.maxHeightFactor = 0.9,
+    this.horizontalPadding = 16,
+    this.verticalPadding = 16,
+  });
+
+  final String title;
+  final Widget child;
+  final Color overlayColor;
+  final double maxWidth;
+  final double maxHeightFactor;
+  final double horizontalPadding;
+  final double verticalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    return Material(
+      color: overlayColor,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxHeight = constraints.maxHeight * maxHeightFactor;
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                verticalPadding,
+                horizontalPadding,
+                verticalPadding + viewInsets.bottom,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: maxWidth,
+                    maxHeight: maxHeight,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2419),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xAA7C6B48),
+                        width: 1,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x99000000),
+                          blurRadius: 24,
+                          offset: Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PopupBar(title: title),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                            child: child,
+                          ),
+                          const PopupBar(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class PopupBar extends StatelessWidget {
   const PopupBar({super.key, this.title});
 
@@ -178,7 +229,7 @@ class PopupBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 38,
+      height: 32,
       child: Stack(
         children: [
           Row(
@@ -221,7 +272,7 @@ class PopupBar extends StatelessWidget {
                 title!,
                 style: const TextStyle(
                   color: Color(0xFFE3D8C3),
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   shadows: [
                     Shadow(
@@ -289,7 +340,7 @@ class PopupField extends StatelessWidget {
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
-          vertical: 12,
+          vertical: 10,
         ),
       ),
     );
@@ -313,7 +364,9 @@ class PopupButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         side: BorderSide(
           color:
               highlighted ? const Color(0xFFE2BF63) : const Color(0xAA7C6B48),

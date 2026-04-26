@@ -31,8 +31,8 @@ class AuthController extends AsyncNotifier<AuthSession?> {
         username: username,
         password: password,
       );
-      _refreshGameSession();
       state = AsyncData(session);
+      _refreshGameSession();
     } catch (error, stackTrace) {
       if (previous != null) {
         state = AsyncData(previous);
@@ -55,8 +55,8 @@ class AuthController extends AsyncNotifier<AuthSession?> {
         username: username,
         password: password,
       );
-      _refreshGameSession();
       state = AsyncData(session);
+      _refreshGameSession();
     } catch (error, stackTrace) {
       if (previous != null) {
         state = AsyncData(previous);
