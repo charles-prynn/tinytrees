@@ -108,7 +108,7 @@ ios-sim-run: backend-up ios-flutter-config ios-clean-xattrs ios-sim-boot
 		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_SIMULATOR)" --dart-define=API_BASE_URL=$(API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
 	fi
 
-ios-device-run: backend-up ios-flutter-config ios-clean-xattrs
+ios-device-run: ios-flutter-config ios-clean-xattrs
 	@if [ -n "$(IOS_DEVICE_ID)" ]; then \
 		cd frontend && XDG_CONFIG_HOME="$(IOS_FLUTTER_CONFIG_HOME)" flutter run -d "$(IOS_DEVICE_ID)" --dart-define=API_BASE_URL=$(DEVICE_API_BASE_URL) --dart-define=WEBSOCKET_BASE_URL=$(DEVICE_WEBSOCKET_BASE_URL) --dart-define=DEBUG_FPS=$(DEBUG_FPS) $(FLUTTER_RUN_ARGS); \
 	elif [ -n "$(IOS_DEVICE_NAME)" ]; then \

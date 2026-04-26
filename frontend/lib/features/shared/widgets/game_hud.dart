@@ -68,8 +68,20 @@ class GameHud extends ConsumerWidget {
             ),
           ),
         ),
-        if (loginOpen) LoginPopup(onClose: onLoginClosed),
-        if (registrationOpen) RegistrationPopup(onClose: onRegistrationClosed),
+        IgnorePointer(
+          ignoring: !loginOpen,
+          child: Offstage(
+            offstage: !loginOpen,
+            child: LoginPopup(onClose: onLoginClosed),
+          ),
+        ),
+        IgnorePointer(
+          ignoring: !registrationOpen,
+          child: Offstage(
+            offstage: !registrationOpen,
+            child: RegistrationPopup(onClose: onRegistrationClosed),
+          ),
+        ),
       ],
     );
   }
@@ -687,13 +699,11 @@ class UserTopBarSection extends StatelessWidget {
           const TopBarIconWell(
             child: Padding(
               padding: EdgeInsets.all(4),
-                child: Image(
-                  image: AssetImage(
-                    'assets/images/ui/bar/icons/user-icon.png',
-                  ),
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.none,
-                ),
+              child: Image(
+                image: AssetImage('assets/images/ui/bar/icons/user-icon.png'),
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.none,
+              ),
             ),
           ),
           const SizedBox(width: 8),

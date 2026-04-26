@@ -37,6 +37,11 @@ class TileMapGame extends FlameGame with PanDetector {
 
   Future<void> get assetsLoaded => _assetsLoaded.future;
 
+  Future<void> warmUpInteractions() async {
+    await assetsLoaded;
+    await _renderer?.warmUpInteractions();
+  }
+
   @override
   Future<void> onLoad() async {
     try {
@@ -57,6 +62,7 @@ class TileMapGame extends FlameGame with PanDetector {
         showDebugLabels: _showCoordinateDebug,
       );
       await add(_renderer!);
+      await _renderer!.warmUpInteractions();
       if (_showFps) {
         await add(
           FpsTextComponent<TextPaint>(
@@ -187,6 +193,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
+  final List<_XpDropEffect> _xpDropEffects = [];
   Image? _mapLayerImage;
   Object? _mapLayerKey;
   bool _mapLayerBuildQueued = false;
@@ -199,6 +206,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   double _elapsedSeconds = 0;
   bool _needsCentering = true;
   Vector2? _lastGameSize;
+  bool _interactionWarmUpDone = false;
 
   PlayerState? get player => _player;
 
@@ -209,6 +217,16 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     if (value == null) {
       _playerRenderMotion = null;
       return;
+    }
+    final xpGained = _xpDelta(previous, value);
+    if (xpGained > 0) {
+      _xpDropEffects.add(
+        _XpDropEffect(
+          amount: xpGained,
+          startedAtSeconds: _elapsedSeconds,
+          lane: _xpDropEffects.length,
+        ),
+      );
     }
     final target = Offset(value.renderX, value.renderY);
     if (previous == null || currentRenderPosition == null) {
@@ -278,6 +296,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     _walkIconEffects.removeWhere(
       (effect) => effect.isComplete(_elapsedSeconds),
     );
+    _xpDropEffects.removeWhere((effect) => effect.isComplete(_elapsedSeconds));
   }
 
   void panBy(Vector2 delta) {
@@ -586,6 +605,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         drawTileSize: drawTileSize,
         paint: paint,
       );
+      _drawXpDrops(
+        canvas: canvas,
+        pose: playerPose,
+        offset: offset,
+        drawTileSize: drawTileSize,
+      );
     }
 
     for (final entity in entities) {
@@ -798,11 +823,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       fontSize: math.max(7, drawTileSize * 0.18),
       fontWeight: FontWeight.w700,
       shadows: const [
-        Shadow(
-          color: Color(0xCC000000),
-          offset: Offset(0, 1),
-          blurRadius: 1,
-        ),
+        Shadow(color: Color(0xCC000000), offset: Offset(0, 1), blurRadius: 1),
       ],
     );
 
@@ -908,6 +929,165 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       drawTileSize,
     );
     canvas.drawImageRect(_walkIcon, source, destination, paint);
+  }
+
+  Future<void> warmUpInteractions() async {
+    if (_interactionWarmUpDone) {
+      return;
+    }
+    _interactionWarmUpDone = true;
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint =
+        Paint()
+          ..filterQuality = FilterQuality.none
+          ..isAntiAlias = false;
+
+    canvas.drawImageRect(
+      _tileset,
+      Rect.fromLTWH(0, 0, 32, 32),
+      const Rect.fromLTWH(0, 0, 32, 32),
+      paint,
+    );
+    canvas.drawImageRect(
+      _walkIcon,
+      const Rect.fromLTWH(0, 0, 32, 32),
+      const Rect.fromLTWH(40, 0, 32, 32),
+      paint,
+    );
+
+    for (final image in _entityImages.values.take(1)) {
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        const Rect.fromLTWH(80, 0, 64, 64),
+        paint,
+      );
+    }
+
+    const animations = <PlayerCharacterAnimation>[
+      PlayerCharacterAnimation.idle,
+      PlayerCharacterAnimation.walk,
+      PlayerCharacterAnimation.slash,
+    ];
+    for (final animation in animations) {
+      for (final direction in PlayerCharacterDirection.values) {
+        for (final layer in _playerCharacter.layers) {
+          final frame = _playerCharacter.frameFor(
+            layer: layer,
+            animation: animation,
+            direction: direction,
+            elapsedSeconds: 0.2,
+          );
+          if (frame == null) {
+            continue;
+          }
+          canvas.drawImageRect(
+            frame.image,
+            frame.sourceRect,
+            const Rect.fromLTWH(0, 80, 64, 64),
+            paint,
+          );
+        }
+        final slashBackground = _playerCharacter.axeSlashBackgroundFrame(
+          direction: direction,
+          elapsedSeconds: 0.2,
+        );
+        if (slashBackground != null) {
+          canvas.drawImageRect(
+            slashBackground.image,
+            slashBackground.sourceRect,
+            const Rect.fromLTWH(72, 80, 128, 128),
+            paint,
+          );
+        }
+        final slashForeground = _playerCharacter.axeSlashForegroundFrame(
+          direction: direction,
+          elapsedSeconds: 0.2,
+        );
+        if (slashForeground != null) {
+          canvas.drawImageRect(
+            slashForeground.image,
+            slashForeground.sourceRect,
+            const Rect.fromLTWH(72, 80, 128, 128),
+            paint,
+          );
+        }
+        final slashSparks = _playerCharacter.axeSlashSparksFrame(
+          direction: direction,
+          elapsedSeconds: 0.2,
+        );
+        if (slashSparks != null) {
+          canvas.drawImageRect(
+            slashSparks.image,
+            slashSparks.sourceRect,
+            const Rect.fromLTWH(72, 80, 128, 128),
+            paint,
+          );
+        }
+      }
+    }
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(256, 256);
+    image.dispose();
+    picture.dispose();
+  }
+
+  void _drawXpDrops({
+    required Canvas canvas,
+    required _PlayerPose pose,
+    required Offset offset,
+    required double drawTileSize,
+  }) {
+    for (final effect in _xpDropEffects) {
+      final progress = effect.progressAt(_elapsedSeconds);
+      final opacity = (1 - progress).clamp(0, 1).toDouble();
+      if (opacity <= 0) {
+        continue;
+      }
+
+      final rise = drawTileSize * (0.35 + progress * 0.95);
+      final drift = drawTileSize * 0.12 * effect.horizontalDirection;
+      final baseX = offset.dx + (pose.position.dx + 0.5) * drawTileSize;
+      final baseY = offset.dy + pose.position.dy * drawTileSize;
+      final labelStyle = TextStyle(
+        color: Color.lerp(
+          const Color(0x00D1FF75),
+          const Color(0xFFD1FF75),
+          opacity,
+        ),
+        fontSize: math.max(12, drawTileSize * 0.34),
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0.2,
+        shadows: [
+          Shadow(
+            color:
+                Color.lerp(
+                  const Color(0x00000000),
+                  const Color(0xCC183016),
+                  opacity,
+                ) ??
+                const Color(0xCC183016),
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+          ),
+        ],
+      );
+      final painter = TextPainter(
+        text: TextSpan(text: '+${effect.amount} XP', style: labelStyle),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(
+          baseX - painter.width / 2 + drift,
+          baseY - drawTileSize * 0.9 - painter.height - rise,
+        ),
+      );
+    }
   }
 
   void _drawEntity({
@@ -1188,6 +1368,24 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       ),
     );
   }
+
+  int _xpDelta(PlayerState? previous, PlayerState current) {
+    if (previous == null || previous.userId != current.userId) {
+      return 0;
+    }
+
+    final previousBySkill = {
+      for (final skill in previous.skills) skill.skillKey: skill.xp,
+    };
+    var gained = 0;
+    for (final skill in current.skills) {
+      final before = previousBySkill[skill.skillKey] ?? 0;
+      if (skill.xp > before) {
+        gained += skill.xp - before;
+      }
+    }
+    return gained;
+  }
 }
 
 enum _PlayerDirection {
@@ -1269,7 +1467,8 @@ class _PlayerRenderMotion {
       return to;
     }
     final progress =
-        ((elapsedSeconds - startedAtSeconds) / (endsAtSeconds - startedAtSeconds))
+        ((elapsedSeconds - startedAtSeconds) /
+                (endsAtSeconds - startedAtSeconds))
             .clamp(0, 1)
             .toDouble();
     final eased = progress * progress * (3 - 2 * progress);
@@ -1299,5 +1498,31 @@ class _WalkIconEffect {
   int frameAt(double elapsedSeconds) {
     final elapsed = math.max(0, elapsedSeconds - startedAtSeconds);
     return (elapsed ~/ frameDurationSeconds).clamp(0, frameCount - 1).toInt();
+  }
+}
+
+class _XpDropEffect {
+  const _XpDropEffect({
+    required this.amount,
+    required this.startedAtSeconds,
+    required this.lane,
+  });
+
+  static const durationSeconds = 1.1;
+
+  final int amount;
+  final double startedAtSeconds;
+  final int lane;
+
+  double get horizontalDirection => lane.isEven ? -1 : 1;
+
+  bool isComplete(double elapsedSeconds) {
+    return elapsedSeconds - startedAtSeconds >= durationSeconds;
+  }
+
+  double progressAt(double elapsedSeconds) {
+    return ((elapsedSeconds - startedAtSeconds) / durationSeconds)
+        .clamp(0, 1)
+        .toDouble();
   }
 }

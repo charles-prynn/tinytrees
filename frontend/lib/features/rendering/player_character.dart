@@ -21,10 +21,7 @@ class PlayerCharacterLayer {
 }
 
 class PlayerCharacterFrame {
-  const PlayerCharacterFrame({
-    required this.image,
-    required this.sourceRect,
-  });
+  const PlayerCharacterFrame({required this.image, required this.sourceRect});
 
   final Image image;
   final Rect sourceRect;
@@ -55,23 +52,7 @@ class PlayerCharacterSheet {
 
   static const frameSize = 64.0;
   static const oversizedFrameSize = 128.0;
-  static const _animationFolders = <String>[
-    'idle',
-    'walk',
-    'run',
-    'slash',
-    '1h_halfslash',
-    '1h_backslash',
-    'thrust',
-    'shoot',
-    'hurt',
-    'climb',
-    'jump',
-    'sit',
-    'emote',
-    'spellcast',
-    'combat',
-  ];
+  static const _animationFolders = <String>['idle', 'walk', 'slash'];
 
   static Future<PlayerCharacterSheet> load(Images images) async {
     final raw = await rootBundle.loadString(
@@ -97,7 +78,8 @@ class PlayerCharacterSheet {
       final candidateFolders = _candidateFoldersFor(supportedAnimations);
 
       for (final folder in candidateFolders) {
-        final assetPath = 'sprites/character/standard/$folder/$exportedFileName';
+        final assetPath =
+            'sprites/character/standard/$folder/$exportedFileName';
         try {
           imagesByFolder[folder] = await images.load(assetPath);
         } catch (_) {
@@ -262,22 +244,10 @@ class PlayerCharacterSheet {
     final preferredFolders = switch (requested) {
       PlayerCharacterAnimation.idle => const ['idle', 'walk'],
       PlayerCharacterAnimation.walk => const ['walk'],
-      PlayerCharacterAnimation.run => const ['run', 'walk'],
       PlayerCharacterAnimation.slash =>
         axeSlashTool != null
             ? const ['slash', 'walk']
-            : const ['1h_halfslash', '1h_backslash', 'slash', 'walk'],
-      PlayerCharacterAnimation.halfslash => const ['1h_halfslash', 'slash'],
-      PlayerCharacterAnimation.backslash => const ['1h_backslash', 'slash'],
-      PlayerCharacterAnimation.thrust => const ['thrust'],
-      PlayerCharacterAnimation.shoot => const ['shoot'],
-      PlayerCharacterAnimation.hurt => const ['hurt'],
-      PlayerCharacterAnimation.climb => const ['climb'],
-      PlayerCharacterAnimation.jump => const ['jump'],
-      PlayerCharacterAnimation.sit => const ['sit'],
-      PlayerCharacterAnimation.emote => const ['emote'],
-      PlayerCharacterAnimation.spellcast => const ['spellcast'],
-      PlayerCharacterAnimation.combat => const ['combat'],
+            : const ['slash', 'walk'],
     };
 
     for (final folder in preferredFolders) {
@@ -301,7 +271,9 @@ class PlayerCharacterSheet {
       );
       Image? sparks;
       try {
-        sparks = await images.load('sprites/character/tools/slash/axe-sparks.png');
+        sparks = await images.load(
+          'sprites/character/tools/slash/axe-sparks.png',
+        );
       } catch (_) {
         sparks = null;
       }
@@ -378,105 +350,9 @@ class PlayerCharacterSheet {
         downRowIndex: 2,
         upRowIndex: 0,
       ),
-      '1h_halfslash' => const _AnimationSpec(
-        frameCount: 6,
-        framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      '1h_backslash' => const _AnimationSpec(
-        frameCount: 13,
-        framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
       'slash' => const _AnimationSpec(
         frameCount: 6,
         framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'thrust' => const _AnimationSpec(
-        frameCount: 8,
-        framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'shoot' => const _AnimationSpec(
-        frameCount: 13,
-        framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'hurt' => const _AnimationSpec(
-        frameCount: 6,
-        framesPerSecond: 10,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'climb' => const _AnimationSpec(
-        frameCount: 6,
-        framesPerSecond: 8,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'jump' => const _AnimationSpec(
-        frameCount: 7,
-        framesPerSecond: 8,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'sit' => const _AnimationSpec(
-        frameCount: 3,
-        framesPerSecond: 4,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'emote' => const _AnimationSpec(
-        frameCount: 3,
-        framesPerSecond: 4,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'run' => const _AnimationSpec(
-        frameCount: 8,
-        framesPerSecond: 12,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'spellcast' => const _AnimationSpec(
-        frameCount: 7,
-        framesPerSecond: 8,
-        rightRowIndex: 3,
-        leftRowIndex: 1,
-        downRowIndex: 2,
-        upRowIndex: 0,
-      ),
-      'combat' => const _AnimationSpec(
-        frameCount: 2,
-        framesPerSecond: 3,
         rightRowIndex: 3,
         leftRowIndex: 1,
         downRowIndex: 2,
@@ -516,19 +392,7 @@ class PlayerCharacterSheet {
 enum PlayerCharacterAnimation {
   idle('idle', 'Idle'),
   walk('walk', 'Walk'),
-  run('run', 'Run'),
-  slash('slash', 'Slash'),
-  halfslash('1h_halfslash', '1H Halfslash'),
-  backslash('1h_backslash', '1H Backslash'),
-  thrust('thrust', 'Thrust'),
-  shoot('shoot', 'Shoot'),
-  hurt('hurt', 'Hurt'),
-  climb('climb', 'Climb'),
-  jump('jump', 'Jump'),
-  sit('sit', 'Sit'),
-  emote('emote', 'Emote'),
-  spellcast('spellcast', 'Spellcast'),
-  combat('combat', 'Combat Idle');
+  slash('slash', 'Slash');
 
   const PlayerCharacterAnimation(this.folder, this.label);
 
@@ -539,19 +403,7 @@ enum PlayerCharacterAnimation {
     return switch (this) {
       PlayerCharacterAnimation.idle => supportedAnimations.contains('idle'),
       PlayerCharacterAnimation.walk => supportedAnimations.contains('walk'),
-      PlayerCharacterAnimation.run => supportedAnimations.contains('run'),
       PlayerCharacterAnimation.slash => supportedAnimations.contains('slash'),
-      PlayerCharacterAnimation.halfslash => supportedAnimations.contains('halfslash'),
-      PlayerCharacterAnimation.backslash => supportedAnimations.contains('backslash'),
-      PlayerCharacterAnimation.thrust => supportedAnimations.contains('thrust'),
-      PlayerCharacterAnimation.shoot => supportedAnimations.contains('shoot'),
-      PlayerCharacterAnimation.hurt => supportedAnimations.contains('hurt'),
-      PlayerCharacterAnimation.climb => supportedAnimations.contains('climb'),
-      PlayerCharacterAnimation.jump => supportedAnimations.contains('jump'),
-      PlayerCharacterAnimation.sit => supportedAnimations.contains('sit'),
-      PlayerCharacterAnimation.emote => supportedAnimations.contains('emote'),
-      PlayerCharacterAnimation.spellcast => supportedAnimations.contains('spellcast'),
-      PlayerCharacterAnimation.combat => supportedAnimations.contains('combat_idle'),
     };
   }
 }

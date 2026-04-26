@@ -22,10 +22,7 @@ import 'widgets/game_loading_overlay.dart';
 import 'widgets/game_hud.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
-  const MainScreen({
-    super.key,
-    this.waitForGameAssetsDuringLoad = true,
-  });
+  const MainScreen({super.key, this.waitForGameAssetsDuringLoad = true});
 
   final bool waitForGameAssetsDuringLoad;
 
@@ -34,6 +31,13 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen> {
+  static const _uiWarmupImages = <AssetImage>[
+    AssetImage('assets/images/ui/bar/left-bar.png'),
+    AssetImage('assets/images/ui/bar/middle-bar.png'),
+    AssetImage('assets/images/ui/bar/right-bar.png'),
+    AssetImage('assets/images/ui/bar/icons/Inventory-icon.png'),
+  ];
+
   late final TileMapGame _game;
   bool _gameAssetsReady = false;
   String? _gameAssetsError;
@@ -56,6 +60,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _keyboardFocusNode.requestFocus();
+        unawaited(_warmUpUiAssets());
       }
     });
     final config = ref.read(appConfigProvider);
@@ -276,6 +281,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         _gameAssetsReady = false;
         _gameAssetsError = '$error';
       });
+    }
+  }
+
+  Future<void> _warmUpUiAssets() async {
+    for (final image in _uiWarmupImages) {
+      await precacheImage(image, context);
     }
   }
 
