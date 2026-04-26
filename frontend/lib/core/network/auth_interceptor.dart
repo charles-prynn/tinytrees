@@ -1,17 +1,20 @@
 import 'package:dio/dio.dart';
 
+import '../auth/token_refresher.dart';
 import '../storage/token_storage.dart';
 
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required TokenStorage tokenStorage,
-    required Dio refreshClient,
+    required TokenRefresher tokenRefresher,
+    required Dio retryClient,
   }) : _tokenStorage = tokenStorage,
-       _refreshClient = refreshClient;
+       _tokenRefresher = tokenRefresher,
+       _retryClient = retryClient;
 
   final TokenStorage _tokenStorage;
-  final Dio _refreshClient;
-  Future<TokenPair?>? _refreshInFlight;
+  final TokenRefresher _tokenRefresher;
+  final Dio _retryClient;
 
   @override
   Future<void> onRequest(
@@ -37,7 +40,7 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
-    final refreshed = await _refreshTokens();
+    final refreshed = await _tokenRefresher.refreshTokens();
     if (refreshed == null) {
       handler.next(err);
       return;
@@ -48,42 +51,10 @@ class AuthInterceptor extends Interceptor {
     request.headers['Authorization'] = 'Bearer ${refreshed.accessToken}';
 
     try {
-      final response = await _refreshClient.fetch<dynamic>(request);
+      final response = await _retryClient.fetch<dynamic>(request);
       handler.resolve(response);
     } catch (_) {
       handler.next(err);
-    }
-  }
-
-  Future<TokenPair?> _refreshTokens() {
-    _refreshInFlight ??= _doRefresh().whenComplete(() {
-      _refreshInFlight = null;
-    });
-    return _refreshInFlight!;
-  }
-
-  Future<TokenPair?> _doRefresh() async {
-    final current = await _tokenStorage.read();
-    if (current == null) return null;
-
-    try {
-      final response = await _refreshClient.post<Map<String, dynamic>>(
-        '/v1/auth/refresh',
-        data: {'refresh_token': current.refreshToken},
-      );
-      final data = response.data?['data'] as Map<String, dynamic>?;
-      final tokenJson = data?['tokens'] as Map<String, dynamic>?;
-      if (tokenJson == null) return null;
-
-      final next = TokenPair(
-        accessToken: tokenJson['access_token'] as String,
-        refreshToken: tokenJson['refresh_token'] as String,
-      );
-      await _tokenStorage.write(next);
-      return next;
-    } catch (_) {
-      await _tokenStorage.clear();
-      return null;
     }
   }
 }

@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../auth/token_refresher.dart';
 import '../config/app_config.dart';
 import '../errors/app_error.dart';
 import '../storage/token_storage.dart';
@@ -13,6 +15,7 @@ final gameSocketProvider = Provider<GameSocket>((ref) {
   final socket = GameSocket(
     config: ref.watch(appConfigProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+    tokenRefresher: ref.watch(tokenRefresherProvider),
   );
   ref.onDispose(socket.close);
   return socket;
@@ -33,12 +36,17 @@ enum GameSocketConnectionState {
 }
 
 class GameSocket {
-  GameSocket({required AppConfig config, required TokenStorage tokenStorage})
-    : _config = config,
-      _tokenStorage = tokenStorage;
+  GameSocket({
+    required AppConfig config,
+    required TokenStorage tokenStorage,
+    required TokenRefresher tokenRefresher,
+  }) : _config = config,
+       _tokenStorage = tokenStorage,
+       _tokenRefresher = tokenRefresher;
 
   final AppConfig _config;
   final TokenStorage _tokenStorage;
+  final TokenRefresher _tokenRefresher;
   final Map<String, Completer<Map<String, dynamic>>> _pending = {};
   final StreamController<GameSocketMessage> _events =
       StreamController<GameSocketMessage>.broadcast();
@@ -142,7 +150,7 @@ class GameSocket {
 
   Future<WebSocketChannel> _open() async {
     try {
-      final tokens = await _tokenStorage.read();
+      final tokens = await _readTokensForSocket();
       if (tokens == null) {
         throw const AppError(
           'Authentication is required',
@@ -181,6 +189,20 @@ class GameSocket {
       _debugLog('connect-failed', {'error': error.toString()});
       rethrow;
     }
+  }
+
+  Future<TokenPair?> _readTokensForSocket() async {
+    final tokens = await _tokenStorage.read();
+    if (tokens == null) {
+      return null;
+    }
+
+    if (_reconnectAttempt <= 0) {
+      return tokens;
+    }
+
+    final refreshed = await _tokenRefresher.refreshTokens();
+    return refreshed ?? tokens;
   }
 
   String _webSocketURL(String accessToken) {
@@ -345,7 +367,14 @@ class GameSocket {
   }
 
   bool _isUnauthorized(Object error) {
-    return error is AppError && error.code == 'unauthorized';
+    if (error is AppError && error.code == 'unauthorized') {
+      return true;
+    }
+    if (error is DioException && error.response?.statusCode == 401) {
+      return true;
+    }
+    final message = error.toString();
+    return message.contains('401');
   }
 
   void _updateConnectionState(GameSocketConnectionState next) {

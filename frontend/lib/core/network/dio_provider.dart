@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/token_refresher.dart';
 import '../config/app_config.dart';
 import '../storage/token_storage.dart';
 import 'auth_interceptor.dart';
@@ -19,10 +20,14 @@ final dioProvider = Provider<Dio>((ref) {
   );
 
   final dio = Dio(baseOptions);
-  final refreshClient = Dio(baseOptions);
+  final retryClient = Dio(baseOptions);
 
   dio.interceptors.add(
-    AuthInterceptor(tokenStorage: tokenStorage, refreshClient: refreshClient),
+    AuthInterceptor(
+      tokenStorage: tokenStorage,
+      tokenRefresher: ref.watch(tokenRefresherProvider),
+      retryClient: retryClient,
+    ),
   );
   if (kDebugMode) {
     dio.interceptors.add(LogInterceptor(requestBody: true, responseBody: true));
