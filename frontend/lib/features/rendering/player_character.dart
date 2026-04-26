@@ -92,7 +92,7 @@ class PlayerCharacterSheet {
               .map((animation) => '$animation')
               .toSet();
       final exportedFileName =
-          '${zPos.toString().padLeft(3, '0')} ${_normalizeExportName(name)}.png';
+          '${zPos.toString().padLeft(3, '0')}_${_normalizeExportName(name)}.png';
       final imagesByFolder = <String, Image>{};
       final candidateFolders = _candidateFoldersFor(supportedAnimations);
 
