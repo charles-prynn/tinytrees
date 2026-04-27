@@ -7,6 +7,8 @@ import '../../../core/realtime/game_socket.dart';
 import '../../auth/data/auth_controller.dart';
 import '../domain/bootstrap_config.dart';
 
+part 'bootstrap_repository_parts/app_bootstrap.dart';
+
 final bootstrapRepositoryProvider = Provider<BootstrapRepository>((ref) {
   return BootstrapRepository(
     ref.watch(dioProvider),
@@ -39,10 +41,4 @@ class BootstrapRepository {
     final response = await _dio.get<Map<String, dynamic>>('/v1/bootstrap');
     return BootstrapConfig.fromJson(unwrapData(response.data));
   }
-}
-
-class AppBootstrap {
-  const AppBootstrap({required this.config});
-
-  final BootstrapConfig config;
 }

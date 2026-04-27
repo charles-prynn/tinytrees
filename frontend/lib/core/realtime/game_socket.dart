@@ -11,6 +11,9 @@ import '../config/app_config.dart';
 import '../errors/app_error.dart';
 import '../storage/token_storage.dart';
 
+part 'game_socket_parts/game_socket_connection_state.dart';
+part 'game_socket_parts/game_socket_message.dart';
+
 final gameSocketProvider = Provider<GameSocket>((ref) {
   final socket = GameSocket(
     config: ref.watch(appConfigProvider),
@@ -27,13 +30,6 @@ final gameSocketConnectionProvider = StreamProvider<GameSocketConnectionState>((
   final socket = ref.watch(gameSocketProvider);
   return socket.connectionStates;
 });
-
-enum GameSocketConnectionState {
-  disconnected,
-  connecting,
-  connected,
-  reconnecting,
-}
 
 class GameSocket {
   GameSocket({
@@ -403,11 +399,4 @@ class GameSocket {
     }
     return uri.replace(queryParameters: queryParameters).toString();
   }
-}
-
-class GameSocketMessage {
-  const GameSocketMessage({required this.type, required this.data});
-
-  final String type;
-  final Map<String, dynamic> data;
 }

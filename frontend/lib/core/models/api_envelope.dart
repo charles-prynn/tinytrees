@@ -1,3 +1,5 @@
+part 'api_envelope_parts/api_error_body.dart';
+
 class ApiEnvelope<T> {
   const ApiEnvelope({this.data, this.error, this.requestId});
 
@@ -16,20 +18,6 @@ class ApiEnvelope<T> {
               ? null
               : ApiErrorBody.fromJson(json['error'] as Map<String, dynamic>),
       requestId: json['request_id'] as String?,
-    );
-  }
-}
-
-class ApiErrorBody {
-  const ApiErrorBody({required this.code, required this.message});
-
-  final String code;
-  final String message;
-
-  factory ApiErrorBody.fromJson(Map<String, dynamic> json) {
-    return ApiErrorBody(
-      code: json['code'] as String? ?? 'unknown_error',
-      message: json['message'] as String? ?? 'Unknown error',
     );
   }
 }
