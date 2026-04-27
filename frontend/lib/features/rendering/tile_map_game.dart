@@ -116,6 +116,14 @@ class TileMapGame extends FlameGame with PanDetector {
     _renderer?.player = player;
   }
 
+  void showEntityMessage(
+    String entityID,
+    String label, {
+    Color color = const Color(0xFFF28F7A),
+  }) {
+    _renderer?.showEntityMessage(entityID, label, color: color);
+  }
+
   String? holdLabelAt(Offset localPosition) {
     return _renderer?.holdLabelAt(Vector2(localPosition.dx, localPosition.dy));
   }
@@ -199,10 +207,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
   static const _playerRenderSmoothingSeconds = 0.36;
+  static const _playerWalkAnimationDistanceThreshold = 0.06;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
   final List<_XpDropEffect> _xpDropEffects = [];
+  final List<_FloatingTextEffect> _floatingTextEffects = [];
   final Set<int> _blockedTiles = <int>{};
   Image? _mapLayerImage;
   Object? _mapLayerKey;
@@ -223,6 +233,31 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   void setEntities(List<WorldEntity> value) {
     entities = value;
     _rebuildEntityCollisionCache();
+  }
+
+  void showEntityMessage(
+    String entityID,
+    String label, {
+    Color color = const Color(0xFFF28F7A),
+  }) {
+    final entity = entities.cast<WorldEntity?>().firstWhere(
+      (candidate) => candidate?.id == entityID,
+      orElse: () => null,
+    );
+    if (entity == null) {
+      return;
+    }
+    _floatingTextEffects.add(
+      _FloatingTextEffect(
+        label: label,
+        x: entity.x.toDouble() + 0.5,
+        y: entity.y.toDouble(),
+        startedAtSeconds: _elapsedSeconds,
+        lane: _floatingTextEffects.length,
+        color: color,
+        shadowColor: const Color(0xCC3A120E),
+      ),
+    );
   }
 
   set player(PlayerState? value) {
@@ -314,6 +349,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       (effect) => effect.isComplete(_elapsedSeconds),
     );
     _xpDropEffects.removeWhere((effect) => effect.isComplete(_elapsedSeconds));
+    _floatingTextEffects.removeWhere(
+      (effect) => effect.isComplete(_elapsedSeconds),
+    );
   }
 
   void panBy(Vector2 delta) {
@@ -427,7 +465,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
 
   EntityInteractionTarget? entityInteractionTargetAt(Vector2 screenPosition) {
     final entity = entityAt(screenPosition);
-    if (entity == null) {
+    if (entity == null || entity.isDepleted) {
       return null;
     }
 
@@ -536,6 +574,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   Rect _entityCollisionBounds(WorldEntity entity) {
+    if (entity.isDepleted) {
+      return Rect.fromLTWH(entity.x.toDouble(), entity.y.toDouble(), 0, 0);
+    }
     return Rect.fromLTWH(
       entity.x.toDouble(),
       entity.y.toDouble(),
@@ -636,6 +677,12 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         borderPaint: _entityBorderPaint,
       );
     }
+
+    _drawFloatingTextEffects(
+      canvas: canvas,
+      offset: offset,
+      drawTileSize: drawTileSize,
+    );
 
     for (final effect in _walkIconEffects) {
       _drawWalkIconEffect(
@@ -1090,6 +1137,56 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     }
   }
 
+  void _drawFloatingTextEffects({
+    required Canvas canvas,
+    required Offset offset,
+    required double drawTileSize,
+  }) {
+    for (final effect in _floatingTextEffects) {
+      final progress = effect.progressAt(_elapsedSeconds);
+      final opacity = (1 - progress).clamp(0, 1).toDouble();
+      if (opacity <= 0) {
+        continue;
+      }
+
+      final rise = drawTileSize * (0.35 + progress * 0.95);
+      final drift = drawTileSize * 0.12 * effect.horizontalDirection;
+      final baseX = offset.dx + effect.x * drawTileSize;
+      final baseY = offset.dy + effect.y * drawTileSize;
+      final labelStyle = TextStyle(
+        color: Color.lerp(const Color(0x00000000), effect.color, opacity),
+        fontSize: math.max(12, drawTileSize * 0.34),
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0.2,
+        shadows: [
+          Shadow(
+            color:
+                Color.lerp(
+                  const Color(0x00000000),
+                  effect.shadowColor,
+                  opacity,
+                ) ??
+                effect.shadowColor,
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+          ),
+        ],
+      );
+      final painter = TextPainter(
+        text: TextSpan(text: effect.label, style: labelStyle),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(
+          baseX - painter.width / 2 + drift,
+          baseY - drawTileSize * 0.9 - painter.height - rise,
+        ),
+      );
+    }
+  }
+
   void _drawEntity({
     required Canvas canvas,
     required WorldEntity entity,
@@ -1113,23 +1210,37 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       final frame = animation.frameAt(
         Duration(milliseconds: (_elapsedSeconds * 1000).floor()),
       );
+      final drawWidthTiles = frame.drawWidthTiles ?? visual.drawWidthTiles;
+      final drawHeightTiles = frame.drawHeightTiles ?? visual.drawHeightTiles;
+      final anchorXTiles = frame.anchorXTiles ?? visual.anchorXTiles;
+      final anchorYTiles = frame.anchorYTiles ?? visual.anchorYTiles;
       final destinationBounds = Rect.fromLTWH(
-        offset.dx + (entity.x + 0.5 - visual.anchorXTiles) * drawTileSize,
-        offset.dy + (entity.y + 1 - visual.anchorYTiles) * drawTileSize,
-        visual.drawWidthTiles * drawTileSize,
-        visual.drawHeightTiles * drawTileSize,
+        offset.dx + (entity.x + 0.5 - anchorXTiles) * drawTileSize,
+        offset.dy + (entity.y + 1 - anchorYTiles) * drawTileSize,
+        drawWidthTiles * drawTileSize,
+        drawHeightTiles * drawTileSize,
       );
       if (!destinationBounds.overlaps(viewport)) {
         return;
+      }
+      final visualPaint =
+          Paint()
+            ..isAntiAlias = false
+            ..filterQuality = FilterQuality.none;
+      if (visual.tintColor != null) {
+        visualPaint.colorFilter = ColorFilter.mode(
+          visual.tintColor!,
+          BlendMode.modulate,
+        );
       }
       _drawEntityVisualLayer(
         canvas: canvas,
         image: image,
         source: frame.source,
         destination: destinationBounds,
-        splitY: visual.foregroundSplitY,
+        splitY: frame.foregroundSplitY ?? visual.foregroundSplitY,
         layer: layer,
-        paint: paint,
+        paint: visualPaint,
       );
       return;
     }
@@ -1263,11 +1374,14 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final renderPosition =
         _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
     if (movement == null || movement.path.isEmpty) {
-      final motion = _playerRenderMotion;
       return _PlayerPose(
         position: renderPosition,
         direction: _lastPlayerDirection,
-        isMoving: motion?.isActiveAt(_elapsedSeconds) ?? false,
+        isMoving: _shouldUseWalkAnimation(
+          current: current,
+          renderPosition: renderPosition,
+          now: now,
+        ),
       );
     }
     final direction = _directionForDelta(
@@ -1280,8 +1394,37 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     return _PlayerPose(
       position: renderPosition,
       direction: direction,
-      isMoving: now.isBefore(movement.arrivesAt),
+      isMoving: _shouldUseWalkAnimation(
+        current: current,
+        renderPosition: renderPosition,
+        now: now,
+      ),
     );
+  }
+
+  bool _shouldUseWalkAnimation({
+    required PlayerState current,
+    required Offset renderPosition,
+    required DateTime now,
+  }) {
+    final movement = current.movement;
+    if (movement != null &&
+        movement.path.isNotEmpty &&
+        now.isBefore(movement.arrivesAt)) {
+      return true;
+    }
+
+    final authoritativePosition = Offset(current.renderX, current.renderY);
+    if ((authoritativePosition - renderPosition).distance >
+        _playerWalkAnimationDistanceThreshold) {
+      return true;
+    }
+
+    final motion = _playerRenderMotion;
+    return motion != null &&
+        motion.isActiveAt(_elapsedSeconds) &&
+        (motion.to - renderPosition).distance >
+            _playerWalkAnimationDistanceThreshold;
   }
 
   _PlayerDirection? _harvestDirectionFor(PlayerState current) {
@@ -1402,6 +1545,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     }
 
     for (final entity in entities) {
+      if (entity.isDepleted) {
+        continue;
+      }
       final bounds = _entityCollisionBounds(entity);
       final startX = bounds.left.floor();
       final endX = bounds.right.ceil();
@@ -1547,6 +1693,40 @@ class _XpDropEffect {
   final int amount;
   final double startedAtSeconds;
   final int lane;
+
+  double get horizontalDirection => lane.isEven ? -1 : 1;
+
+  bool isComplete(double elapsedSeconds) {
+    return elapsedSeconds - startedAtSeconds >= durationSeconds;
+  }
+
+  double progressAt(double elapsedSeconds) {
+    return ((elapsedSeconds - startedAtSeconds) / durationSeconds)
+        .clamp(0, 1)
+        .toDouble();
+  }
+}
+
+class _FloatingTextEffect {
+  const _FloatingTextEffect({
+    required this.label,
+    required this.x,
+    required this.y,
+    required this.startedAtSeconds,
+    required this.lane,
+    required this.color,
+    required this.shadowColor,
+  });
+
+  static const durationSeconds = 1.1;
+
+  final String label;
+  final double x;
+  final double y;
+  final double startedAtSeconds;
+  final int lane;
+  final Color color;
+  final Color shadowColor;
 
   double get horizontalDirection => lane.isEven ? -1 : 1;
 

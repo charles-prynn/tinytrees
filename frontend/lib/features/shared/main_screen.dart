@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/errors/app_error.dart';
 import '../../core/realtime/game_socket.dart';
 import '../auth/data/auth_controller.dart';
 import '../entities/data/entity_repository.dart';
@@ -408,8 +409,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
 
     _game.facePlayer(target.facing);
-    final started = await controller.startHarvest(entityId: target.entityId);
-    if (!mounted || !started || sequence != _interactionSequence) {
+    final harvestError = await controller.startHarvest(
+      entityId: target.entityId,
+    );
+    if (!mounted || sequence != _interactionSequence) {
+      return;
+    }
+    if (harvestError is AppError && harvestError.code == 'insufficient_level') {
+      _game.showEntityMessage(target.entityId, 'Level too low');
+      return;
+    }
+    if (harvestError != null) {
       return;
     }
   }

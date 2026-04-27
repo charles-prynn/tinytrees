@@ -260,6 +260,9 @@ func wsError(id string, messageType string, err error) wsServerMessage {
 	case errors.Is(err, service.ErrEmailTaken):
 		code = "conflict"
 		message = err.Error()
+	case errors.Is(err, service.ErrInsufficientLevel):
+		code = "insufficient_level"
+		message = err.Error()
 	case errors.Is(err, service.ErrValidation),
 		errors.Is(err, service.ErrInvalidStateVersion),
 		errors.Is(err, service.ErrInvalidMoveTarget),

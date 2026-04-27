@@ -39,6 +39,8 @@ type MapStore interface {
 type EntityStore interface {
 	ListEntities(ctx context.Context, userID uuid.UUID) ([]domain.Entity, error)
 	CreateEntity(ctx context.Context, entity domain.Entity) (domain.Entity, error)
+	SaveEntity(ctx context.Context, entity domain.Entity) (domain.Entity, error)
+	DeleteEntity(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) error
 }
 
 type PlayerStore interface {

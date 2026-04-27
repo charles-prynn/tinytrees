@@ -174,6 +174,13 @@ class PlayerCharacterSheet {
       return 0;
     }
 
+    // Keep all layers on the same still pose while idle. Some layers only ship
+    // a walk sheet, so animating idle selectively makes the character look
+    // split between idle and walking.
+    if (requestedAnimation == PlayerCharacterAnimation.idle) {
+      return 0;
+    }
+
     final useSmashSlashTiming =
         requestedAnimation == PlayerCharacterAnimation.slash &&
         axeSlashTool != null &&
@@ -242,7 +249,7 @@ class PlayerCharacterSheet {
     }
 
     final preferredFolders = switch (requested) {
-      PlayerCharacterAnimation.idle => const ['idle', 'walk'],
+      PlayerCharacterAnimation.idle => const ['idle'],
       PlayerCharacterAnimation.walk => const ['walk'],
       PlayerCharacterAnimation.slash =>
         axeSlashTool != null

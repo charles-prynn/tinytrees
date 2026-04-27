@@ -10,9 +10,13 @@ final entityRepositoryProvider = Provider<EntityRepository>((ref) {
   return EntityRepository(ref.watch(dioProvider));
 });
 
-final worldEntitiesProvider = FutureProvider<List<WorldEntity>>((ref) async {
+final worldEntitiesProvider = StreamProvider<List<WorldEntity>>((ref) async* {
   await ref.watch(appBootstrapProvider.future);
-  return ref.watch(entityRepositoryProvider).fetch();
+  final repository = ref.watch(entityRepositoryProvider);
+  while (true) {
+    yield await repository.fetch();
+    await Future<void>.delayed(const Duration(seconds: 1));
+  }
 });
 
 class EntityRepository {
