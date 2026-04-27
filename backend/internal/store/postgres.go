@@ -539,6 +539,55 @@ func (s *PostgresEntityStore) CreateEntity(ctx context.Context, entity domain.En
 	return entity, err
 }
 
+func (s *PostgresEntityStore) SaveEntity(ctx context.Context, entity domain.Entity) (domain.Entity, error) {
+	if entity.Metadata == nil {
+		entity.Metadata = map[string]any{}
+	}
+	metadata, err := json.Marshal(entity.Metadata)
+	if err != nil {
+		return domain.Entity{}, err
+	}
+
+	err = s.pool.QueryRow(ctx, `
+		update user_entities
+		set name = $3,
+		    type = $4,
+		    resource_key = $5,
+		    x = $6,
+		    y = $7,
+		    width = $8,
+		    height = $9,
+		    sprite_gid = $10,
+		    state = $11,
+		    metadata = $12,
+		    updated_at = now()
+		where id = $1 and user_id = $2
+		returning created_at, updated_at
+	`,
+		entity.ID,
+		entity.UserID,
+		entity.Name,
+		entity.Type,
+		entity.ResourceKey,
+		entity.X,
+		entity.Y,
+		entity.Width,
+		entity.Height,
+		entity.SpriteGID,
+		entity.State,
+		metadata,
+	).Scan(&entity.CreatedAt, &entity.UpdatedAt)
+	return entity, err
+}
+
+func (s *PostgresEntityStore) DeleteEntity(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		delete from user_entities
+		where id = $1 and user_id = $2
+	`, entityID, userID)
+	return err
+}
+
 type PostgresPlayerStore struct {
 	pool *pgxpool.Pool
 }

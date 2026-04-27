@@ -16,19 +16,21 @@ import (
 
 const (
 	harvestActionType            = "harvest"
-	defaultHarvestDuration       = 5 * time.Minute
-	defaultHarvestTickInterval   = 3 * time.Second
-	defaultHarvestSuccessChance  = 0.35
+	defaultHarvestDuration       = 8 * time.Second
+	defaultHarvestTickInterval   = 5 * time.Second
+	defaultHarvestSuccessChance  = 1.0
 	defaultHarvestRewardItemKey  = "wood"
 	defaultHarvestRewardQuantity = int64(1)
 	defaultHarvestSkillKey       = "woodcutting"
 	defaultHarvestXPPerReward    = int64(25)
+	minHarvestTickInterval       = 1200 * time.Millisecond
 )
 
 var (
 	ErrActionInProgress     = errors.New("an action is already in progress")
 	ErrInvalidHarvestTarget = errors.New("resource cannot be harvested")
 	ErrPlayerIsMoving       = errors.New("player must stop moving before starting an action")
+	ErrInsufficientLevel    = errors.New("woodcutting level is too low for this tree")
 )
 
 type ActionService struct {
@@ -116,6 +118,11 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 			currentLevel = 1
 		}
 	}
+	if currentLevel < requiredLevelForEntity(entity) {
+		return domain.PlayerAction{}, ErrInsufficientLevel
+	}
+
+	tickInterval := harvestTickInterval(currentLevel, requiredLevelForEntity(entity))
 
 	action := domain.PlayerAction{
 		ID:             uuid.New(),
@@ -124,21 +131,23 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 		EntityID:       &entityID,
 		Status:         "active",
 		StartedAt:      now,
-		EndsAt:         now.Add(defaultHarvestDuration),
-		NextTickAt:     now.Add(defaultHarvestTickInterval),
-		TickIntervalMs: int(defaultHarvestTickInterval / time.Millisecond),
+		EndsAt:         now.Add(tickInterval),
+		NextTickAt:     now.Add(tickInterval),
+		TickIntervalMs: int(tickInterval / time.Millisecond),
 		Metadata: map[string]any{
-			"resource_key":     entity.ResourceKey,
-			"reward_item_key":  harvestRewardItemKey(entity),
-			"reward_quantity":  harvestRewardQuantity(entity),
-			"success_chance":   harvestSuccessChance(entity),
-			"skill_key":        skillKey,
-			"xp_per_reward":    harvestXPPerReward(entity),
-			"ticks_processed":  0,
-			"rewards_granted":  0,
-			"xp_granted":       0,
-			"current_level":    currentLevel,
-			"duration_seconds": int(defaultHarvestDuration / time.Second),
+			"resource_key":      entity.ResourceKey,
+			"reward_item_key":   harvestRewardItemKey(entity),
+			"reward_quantity":   harvestRewardQuantity(entity),
+			"success_chance":    harvestSuccessChance(entity),
+			"skill_key":         skillKey,
+			"xp_per_reward":     harvestXPPerReward(entity),
+			"ticks_processed":   0,
+			"rewards_granted":   0,
+			"xp_granted":        0,
+			"current_level":     currentLevel,
+			"duration_seconds":  tickInterval.Milliseconds() / 1000.0,
+			"deplete_on_reward": true,
+			"required_level":    requiredLevelForEntity(entity),
 		},
 	}
 	return s.actions.CreateAction(ctx, action)
@@ -173,6 +182,7 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	xpGranted := int64Metadata(action.Metadata, "xp_granted", 0)
 	levelUps := int64Metadata(action.Metadata, "level_ups", 0)
 	currentLevel := int64Metadata(action.Metadata, "current_level", 0)
+	depleteOnReward := boolMetadata(action.Metadata, "deplete_on_reward", false)
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
 		if randomUnitFloat() < successChance {
@@ -190,6 +200,20 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 					levelUps += int64(skill.Level) - currentLevel
 				}
 				currentLevel = int64(skill.Level)
+			}
+			if depleteOnReward && action.EntityID != nil && s.entities != nil {
+				entity, ok, err := s.entityByID(ctx, userID, *action.EntityID)
+				if err != nil {
+					return nil, err
+				}
+				if ok && entity.State != resourceStateDepleted {
+					if _, err := depleteResourceNode(ctx, s.entities, entity, now); err != nil {
+						return nil, err
+					}
+				}
+				action.Status = "completed"
+				action.NextTickAt = action.EndsAt
+				break
 			}
 		}
 		action.NextTickAt = action.NextTickAt.Add(tickInterval)
@@ -230,7 +254,7 @@ func (s *ActionService) entityByID(ctx context.Context, userID uuid.UUID, entity
 }
 
 func isHarvestableEntity(entity domain.Entity) bool {
-	return entity.Type == "resource" && entity.State != "depleted"
+	return entity.Type == "resource" && entity.State != resourceStateDepleted
 }
 
 func isAdjacentToEntity(player domain.Point, entity domain.Entity) bool {
@@ -276,7 +300,22 @@ func harvestXPPerReward(entity domain.Entity) int64 {
 	return int64Metadata(entity.Metadata, "xp_per_reward", defaultHarvestXPPerReward)
 }
 
+func harvestTickInterval(currentLevel int64, requiredLevel int64) time.Duration {
+	levelBonus := currentLevel - requiredLevel
+	if levelBonus < 0 {
+		levelBonus = 0
+	}
+	interval := defaultHarvestTickInterval - time.Duration(levelBonus)*45*time.Millisecond
+	if interval < minHarvestTickInterval {
+		return minHarvestTickInterval
+	}
+	return interval
+}
+
 func stringMetadata(metadata map[string]any, key string, fallback string) string {
+	if metadata == nil {
+		return fallback
+	}
 	if value, ok := metadata[key].(string); ok && value != "" {
 		return value
 	}
@@ -284,6 +323,9 @@ func stringMetadata(metadata map[string]any, key string, fallback string) string
 }
 
 func int64Metadata(metadata map[string]any, key string, fallback int64) int64 {
+	if metadata == nil {
+		return fallback
+	}
 	switch value := metadata[key].(type) {
 	case int:
 		return int64(value)
@@ -301,6 +343,9 @@ func int64Metadata(metadata map[string]any, key string, fallback int64) int64 {
 }
 
 func floatMetadata(metadata map[string]any, key string, fallback float64) float64 {
+	if metadata == nil {
+		return fallback
+	}
 	switch value := metadata[key].(type) {
 	case float32:
 		return float64(value)
@@ -317,6 +362,17 @@ func floatMetadata(metadata map[string]any, key string, fallback float64) float6
 		}
 	}
 	return fallback
+}
+
+func boolMetadata(metadata map[string]any, key string, fallback bool) bool {
+	if metadata == nil {
+		return fallback
+	}
+	value, ok := metadata[key].(bool)
+	if !ok {
+		return fallback
+	}
+	return value
 }
 
 type jsonNumber interface {

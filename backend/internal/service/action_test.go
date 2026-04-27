@@ -63,6 +63,118 @@ func TestActionServiceResolveAwardsInventoryAndSkillXP(t *testing.T) {
 	}
 }
 
+func TestActionServiceStartHarvestRequiresTreeLevel(t *testing.T) {
+	userID := uuid.New()
+	now := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
+	entityID := uuid.New()
+
+	service := NewActionService(
+		&memoryActions{},
+		&memoryInventory{},
+		&memorySkills{
+			skills: map[string]domain.PlayerSkill{
+				"woodcutting": {
+					UserID:   userID,
+					SkillKey: "woodcutting",
+					Level:    44,
+				},
+			},
+		},
+		&memoryPlayerStore{
+			player: domain.Player{UserID: userID, X: 9, Y: 9},
+		},
+		&memoryEntities{
+			items: []domain.Entity{
+				{
+					ID:          entityID,
+					UserID:      userID,
+					Name:        "Maple Tree",
+					Type:        "resource",
+					ResourceKey: "maple_tree",
+					X:           10,
+					Y:           10,
+					Width:       1,
+					Height:      1,
+					State:       resourceStateIdle,
+					Metadata: map[string]any{
+						"reward_item_key": "maple_logs",
+						"reward_quantity": int64(1),
+						"skill_key":       "woodcutting",
+						"xp_per_reward":   int64(100),
+						"required_level":  int64(45),
+					},
+				},
+			},
+		},
+	)
+	service.now = func() time.Time { return now }
+
+	_, err := service.StartHarvest(context.Background(), userID, entityID)
+	if err != ErrInsufficientLevel {
+		t.Fatalf("expected ErrInsufficientLevel, got %v", err)
+	}
+}
+
+func TestActionServiceResolveDepletesTreeOnReward(t *testing.T) {
+	userID := uuid.New()
+	entityID := uuid.New()
+	startedAt := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
+	action := domain.PlayerAction{
+		ID:             uuid.New(),
+		UserID:         userID,
+		Type:           harvestActionType,
+		EntityID:       &entityID,
+		Status:         "active",
+		StartedAt:      startedAt,
+		EndsAt:         startedAt.Add(time.Second),
+		NextTickAt:     startedAt.Add(time.Second),
+		TickIntervalMs: 1000,
+		Metadata: map[string]any{
+			"reward_item_key":   "oak_logs",
+			"reward_quantity":   int64(1),
+			"success_chance":    1.0,
+			"skill_key":         "woodcutting",
+			"xp_per_reward":     int64(38),
+			"deplete_on_reward": true,
+		},
+	}
+	entities := &memoryEntities{
+		items: []domain.Entity{
+			{
+				ID:          entityID,
+				UserID:      userID,
+				Name:        "Oak Tree",
+				Type:        "resource",
+				ResourceKey: "oak_tree",
+				X:           10,
+				Y:           10,
+				Width:       1,
+				Height:      1,
+				State:       resourceStateIdle,
+				Metadata:    map[string]any{},
+			},
+		},
+	}
+
+	actions := &memoryActions{active: &action}
+	service := NewActionService(actions, &memoryInventory{}, &memorySkills{}, nil, entities)
+	service.now = func() time.Time { return startedAt.Add(time.Second) }
+
+	resolved, err := service.Resolve(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if resolved != nil {
+		t.Fatalf("expected completed action to resolve to nil, got %#v", resolved)
+	}
+	if entities.items[0].State != resourceStateDepleted {
+		t.Fatalf("expected entity to be depleted, got %q", entities.items[0].State)
+	}
+	if _, ok := entities.items[0].Metadata["stump_expires_at"]; !ok {
+		t.Fatal("expected stump_expires_at metadata to be set")
+	}
+}
+
 type memoryActions struct {
 	active *domain.PlayerAction
 }

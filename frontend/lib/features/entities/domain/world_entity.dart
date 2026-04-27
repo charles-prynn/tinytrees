@@ -10,6 +10,7 @@ class WorldEntity {
     required this.height,
     required this.spriteGid,
     required this.state,
+    required this.metadata,
   });
 
   final String id;
@@ -22,6 +23,9 @@ class WorldEntity {
   final int height;
   final int spriteGid;
   final String state;
+  final Map<String, dynamic> metadata;
+
+  bool get isDepleted => state == 'depleted';
 
   factory WorldEntity.fromJson(Map<String, dynamic> json) {
     return WorldEntity(
@@ -35,6 +39,9 @@ class WorldEntity {
       height: (json['height'] as num?)?.toInt() ?? 1,
       spriteGid: (json['sprite_gid'] as num?)?.toInt() ?? 1,
       state: json['state'] as String? ?? '',
+      metadata: Map<String, dynamic>.from(
+        (json['metadata'] as Map?) ?? const {},
+      ),
     );
   }
 }

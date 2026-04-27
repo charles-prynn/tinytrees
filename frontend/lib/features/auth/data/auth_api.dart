@@ -6,6 +6,8 @@ import '../../../core/network/dio_provider.dart';
 import '../../../core/storage/token_storage.dart';
 import '../domain/user.dart';
 
+part 'auth_api_parts/guest_login_response.dart';
+
 final authApiProvider = Provider<AuthApi>((ref) {
   return AuthApi(ref.watch(dioProvider));
 });
@@ -67,11 +69,4 @@ class AuthApi {
       refreshToken: json['refresh_token'] as String,
     );
   }
-}
-
-class GuestLoginResponse {
-  const GuestLoginResponse({required this.user, required this.tokens});
-
-  final AppUser user;
-  final TokenPair tokens;
 }

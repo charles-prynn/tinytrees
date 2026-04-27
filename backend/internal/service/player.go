@@ -143,19 +143,7 @@ func (s *PlayerService) attachSkills(ctx context.Context, userID uuid.UUID, play
 }
 
 func (s *PlayerService) loadEntities(ctx context.Context, userID uuid.UUID) ([]domain.Entity, error) {
-	entities, err := s.entities.ListEntities(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	if len(entities) > 0 {
-		return entities, nil
-	}
-
-	entity, err := s.entities.CreateEntity(ctx, defaultResourceEntity(userID))
-	if err != nil {
-		return nil, err
-	}
-	return []domain.Entity{entity}, nil
+	return ensureResourceNodes(ctx, s.entities, userID, s.now())
 }
 
 func (s *PlayerService) resolveCompletedMovement(ctx context.Context, player domain.Player) (domain.Player, error) {

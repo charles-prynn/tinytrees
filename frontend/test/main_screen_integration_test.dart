@@ -216,7 +216,7 @@ void main() {
         overrides: [
           authControllerProvider.overrideWith(() => authController),
           tileMapProvider.overrideWith((ref) async => _tileMap),
-          worldEntitiesProvider.overrideWith((ref) async => _entities),
+          worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
           playerStateProvider.overrideWith((ref) async => _playerState()),
           inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
           stateSnapshotProvider.overrideWith((ref) async => _snapshot),
@@ -270,7 +270,7 @@ void main() {
               () => _DelayedMapController(mapCompleter.future),
             ),
             worldEntitiesProvider.overrideWith(
-              (ref) => entitiesCompleter.future,
+              (ref) => entitiesCompleter.future.asStream(),
             ),
             playerControllerProvider.overrideWith(
               () => _DelayedPlayerController(playerCompleter.future),
@@ -321,7 +321,7 @@ Widget _buildTestApp({required PlayerState player}) {
     overrides: [
       authControllerProvider.overrideWith(() => _FakeAuthController()),
       tileMapProvider.overrideWith((ref) async => _tileMap),
-      worldEntitiesProvider.overrideWith((ref) async => _entities),
+      worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
       playerStateProvider.overrideWith((ref) async => player),
       inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
       stateSnapshotProvider.overrideWith((ref) async => _snapshot),
@@ -410,13 +410,14 @@ const _entities = [
     id: 'tree-1',
     name: 'Tree',
     type: 'resource',
-    resourceKey: 'autumn_tree',
+    resourceKey: 'tree',
     x: 2,
     y: 2,
     width: 1,
     height: 1,
     spriteGid: 5,
     state: 'idle',
+    metadata: {},
   ),
 ];
 

@@ -43,6 +43,10 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusConflict
 		code = "conflict"
 		message = err.Error()
+	case errors.Is(err, service.ErrInsufficientLevel):
+		status = http.StatusBadRequest
+		code = "insufficient_level"
+		message = err.Error()
 	case errors.Is(err, service.ErrValidation),
 		errors.Is(err, service.ErrInvalidStateVersion),
 		errors.Is(err, service.ErrInvalidMoveTarget),

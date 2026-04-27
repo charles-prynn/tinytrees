@@ -202,3 +202,24 @@ func (m *memoryEntities) CreateEntity(_ context.Context, entity domain.Entity) (
 	m.items = append(m.items, entity)
 	return entity, nil
 }
+
+func (m *memoryEntities) SaveEntity(_ context.Context, entity domain.Entity) (domain.Entity, error) {
+	for index := range m.items {
+		if m.items[index].ID == entity.ID {
+			m.items[index] = entity
+			return entity, nil
+		}
+	}
+	m.items = append(m.items, entity)
+	return entity, nil
+}
+
+func (m *memoryEntities) DeleteEntity(_ context.Context, _ uuid.UUID, entityID uuid.UUID) error {
+	for index := range m.items {
+		if m.items[index].ID == entityID {
+			m.items = append(m.items[:index], m.items[index+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
