@@ -30,6 +30,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         ..color = const Color(0xFFFFD54F)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
+  static const _occludingTreeOpacity = 0.7;
   static const _playerRenderSmoothingSeconds = 0.36;
   static const _playerWalkAnimationDistanceThreshold = 0.06;
   TileMap? tileMap;
@@ -1038,6 +1039,8 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       final drawHeightTiles = frame.drawHeightTiles ?? visual.drawHeightTiles;
       final anchorXTiles = frame.anchorXTiles ?? visual.anchorXTiles;
       final anchorYTiles = frame.anchorYTiles ?? visual.anchorYTiles;
+      final foregroundSplitY =
+          frame.foregroundSplitY ?? visual.foregroundSplitY;
       final destinationBounds = Rect.fromLTWH(
         offset.dx + (entity.x + 0.5 - anchorXTiles) * drawTileSize,
         offset.dy + (entity.y + 1 - anchorYTiles) * drawTileSize,
@@ -1057,14 +1060,28 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
           BlendMode.modulate,
         );
       }
+      final opacity =
+          layer == _EntityRenderLayer.foreground &&
+                  _isPlayerBehindEntity(
+                    entity: entity,
+                    drawWidthTiles: drawWidthTiles,
+                    drawHeightTiles: drawHeightTiles,
+                    anchorXTiles: anchorXTiles,
+                    anchorYTiles: anchorYTiles,
+                    splitY: foregroundSplitY,
+                    sourceHeight: frame.source.height,
+                  )
+              ? _occludingTreeOpacity
+              : 1.0;
       _drawEntityVisualLayer(
         canvas: canvas,
         image: image,
         source: frame.source,
         destination: destinationBounds,
-        splitY: frame.foregroundSplitY ?? visual.foregroundSplitY,
+        splitY: foregroundSplitY,
         layer: layer,
         paint: visualPaint,
+        opacity: opacity,
       );
       return;
     }
@@ -1105,10 +1122,18 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required double? splitY,
     required _EntityRenderLayer layer,
     required Paint paint,
+    required double opacity,
   }) {
     if (splitY == null) {
       if (layer == _EntityRenderLayer.foreground) {
-        canvas.drawImageRect(image, source, destination, paint);
+        _drawImageRectWithOpacity(
+          canvas: canvas,
+          image: image,
+          source: source,
+          destination: destination,
+          paint: paint,
+          opacity: opacity,
+        );
       }
       return;
     }
@@ -1130,7 +1155,14 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         destination.width,
         destination.height * ((source.height - clampedSplit) / source.height),
       );
-      canvas.drawImageRect(image, sourcePart, destinationPart, paint);
+      _drawImageRectWithOpacity(
+        canvas: canvas,
+        image: image,
+        source: sourcePart,
+        destination: destinationPart,
+        paint: paint,
+        opacity: opacity,
+      );
       return;
     }
 
@@ -1149,7 +1181,73 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       destination.width,
       destination.height * (clampedSplit / source.height),
     );
-    canvas.drawImageRect(image, sourcePart, destinationPart, paint);
+    _drawImageRectWithOpacity(
+      canvas: canvas,
+      image: image,
+      source: sourcePart,
+      destination: destinationPart,
+      paint: paint,
+      opacity: opacity,
+    );
+  }
+
+  bool _isPlayerBehindEntity({
+    required WorldEntity entity,
+    required double drawWidthTiles,
+    required double drawHeightTiles,
+    required double anchorXTiles,
+    required double anchorYTiles,
+    required double? splitY,
+    required double sourceHeight,
+  }) {
+    final playerPosition = _playerPosition();
+    if (playerPosition == null ||
+        splitY == null ||
+        sourceHeight <= 0 ||
+        entity.isDepleted) {
+      return false;
+    }
+
+    if (playerPosition.dy >= entity.y) {
+      return false;
+    }
+
+    final foregroundHeightTiles =
+        drawHeightTiles * (splitY.clamp(0, sourceHeight) / sourceHeight);
+    final foregroundBounds = Rect.fromLTWH(
+      entity.x + 0.5 - anchorXTiles,
+      entity.y + 1 - anchorYTiles,
+      drawWidthTiles,
+      foregroundHeightTiles,
+    );
+    final playerBounds = Rect.fromLTWH(
+      playerPosition.dx,
+      playerPosition.dy,
+      1,
+      1,
+    );
+    return foregroundBounds.overlaps(playerBounds);
+  }
+
+  void _drawImageRectWithOpacity({
+    required Canvas canvas,
+    required Image image,
+    required Rect source,
+    required Rect destination,
+    required Paint paint,
+    required double opacity,
+  }) {
+    if (opacity >= 1) {
+      canvas.drawImageRect(image, source, destination, paint);
+      return;
+    }
+
+    canvas.saveLayer(
+      destination,
+      Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: opacity),
+    );
+    canvas.drawImageRect(image, source, destination, paint);
+    canvas.restore();
   }
 
   Offset? _playerPosition() {

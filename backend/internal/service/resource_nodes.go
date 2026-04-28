@@ -13,10 +13,11 @@ import (
 const (
 	resourceStateIdle             = "idle"
 	resourceStateDepleted         = "depleted"
-	resourceNodeTargetCount       = 10
+	resourceNodeTargetCount       = 100
 	resourceStumpLifetime         = 30 * time.Second
 	defaultResourceSkillKey       = "woodcutting"
 	defaultResourceRewardQuantity = int64(1)
+	minForestTreeGapTiles         = 3
 )
 
 type treeDefinition struct {
@@ -28,6 +29,13 @@ type treeDefinition struct {
 	HarvestDuration time.Duration
 }
 
+type forestArea struct {
+	MinX int
+	MaxX int
+	MinY int
+	MaxY int
+}
+
 var (
 	treeDefinitions = []treeDefinition{
 		{Key: "tree", Name: "Tree", RequiredLevel: 1, RewardItemKey: "logs", XPPerReward: 25, HarvestDuration: 10 * time.Minute},
@@ -37,7 +45,8 @@ var (
 		{Key: "yew_tree", Name: "Yew Tree", RequiredLevel: 60, RewardItemKey: "yew_logs", XPPerReward: 175, HarvestDuration: 45 * time.Minute},
 		{Key: "magic_tree", Name: "Magic Tree", RequiredLevel: 75, RewardItemKey: "magic_logs", XPPerReward: 250, HarvestDuration: time.Hour},
 	}
-	treeTargetCounts = map[string]int{
+
+	treeTargetWeights = map[string]int{
 		"tree":        3,
 		"oak_tree":    2,
 		"willow_tree": 2,
@@ -45,12 +54,14 @@ var (
 		"yew_tree":    1,
 		"magic_tree":  1,
 	}
-	resourceSpawnSlots = []domain.Point{
-		{X: 8, Y: 8}, {X: 14, Y: 6}, {X: 20, Y: 8}, {X: 27, Y: 7}, {X: 34, Y: 8},
-		{X: 41, Y: 7}, {X: 48, Y: 8}, {X: 55, Y: 7}, {X: 12, Y: 14}, {X: 19, Y: 14},
-		{X: 26, Y: 13}, {X: 33, Y: 14}, {X: 40, Y: 13}, {X: 47, Y: 14}, {X: 54, Y: 13},
-		{X: 9, Y: 21}, {X: 16, Y: 23}, {X: 23, Y: 21}, {X: 30, Y: 23}, {X: 37, Y: 21},
-		{X: 44, Y: 23}, {X: 51, Y: 21}, {X: 58, Y: 23}, {X: 32, Y: 16},
+
+	treeForestAreas = map[string]forestArea{
+		"tree":        {MinX: 2, MaxX: 25, MinY: 2, MaxY: 13},
+		"oak_tree":    {MinX: 29, MaxX: 43, MinY: 2, MaxY: 13},
+		"willow_tree": {MinX: 47, MaxX: 61, MinY: 2, MaxY: 13},
+		"maple_tree":  {MinX: 2, MaxX: 18, MinY: 18, MaxY: 29},
+		"yew_tree":    {MinX: 23, MaxX: 39, MinY: 18, MaxY: 29},
+		"magic_tree":  {MinX: 44, MaxX: 60, MinY: 18, MaxY: 29},
 	}
 	treeDefinitionByKey = map[string]treeDefinition{}
 )
@@ -142,6 +153,7 @@ func buildResourceEntity(userID uuid.UUID, slot domain.Point, definition treeDef
 }
 
 func missingTreeTypes(entities []domain.Entity) []string {
+	treeTargetCounts := scaledTreeTargetCounts(resourceNodeTargetCount)
 	activeCounts := map[string]int{}
 	activeTotal := 0
 	for _, entity := range entities {
@@ -167,30 +179,80 @@ func missingTreeTypes(entities []domain.Entity) []string {
 	return missing
 }
 
+func scaledTreeTargetCounts(total int) map[string]int {
+	if total <= 0 {
+		return map[string]int{}
+	}
+
+	weightTotal := 0
+	for _, definition := range treeDefinitions {
+		weightTotal += treeTargetWeights[definition.Key]
+	}
+	if weightTotal <= 0 {
+		return map[string]int{}
+	}
+
+	counts := make(map[string]int, len(treeDefinitions))
+	remainders := make([]struct {
+		key       string
+		remainder int
+	}, 0, len(treeDefinitions))
+	assigned := 0
+
+	for _, definition := range treeDefinitions {
+		weight := treeTargetWeights[definition.Key]
+		scaled := total * weight
+		count := scaled / weightTotal
+		counts[definition.Key] = count
+		assigned += count
+		remainders = append(remainders, struct {
+			key       string
+			remainder int
+		}{
+			key:       definition.Key,
+			remainder: scaled % weightTotal,
+		})
+	}
+
+	for assigned < total {
+		bestIndex := 0
+		for index := 1; index < len(remainders); index++ {
+			if remainders[index].remainder > remainders[bestIndex].remainder {
+				bestIndex = index
+			}
+		}
+		counts[remainders[bestIndex].key]++
+		remainders[bestIndex].remainder = -1
+		assigned++
+	}
+
+	return counts
+}
+
 func spawnResourceEntity(userID uuid.UUID, entities []domain.Entity, resourceKey string) (domain.Entity, bool) {
 	definition, ok := treeDefinitionByKey[resourceKey]
 	if !ok {
 		definition = treeDefinitions[0]
 	}
-
-	occupied := map[domain.Point]struct{}{}
-	for _, entity := range entities {
-		occupied[domain.Point{X: entity.X, Y: entity.Y}] = struct{}{}
-	}
-
-	freeSlots := make([]domain.Point, 0, len(resourceSpawnSlots))
-	for _, slot := range resourceSpawnSlots {
-		if _, ok := occupied[slot]; ok {
-			continue
-		}
-		freeSlots = append(freeSlots, slot)
-	}
-	if len(freeSlots) == 0 {
+	forest, ok := treeForestAreas[definition.Key]
+	if !ok {
 		return domain.Entity{}, false
 	}
 
-	slot := freeSlots[randomIndex(len(freeSlots))]
-	return buildResourceEntity(userID, slot, definition), true
+	occupied := make([]domain.Point, 0, len(entities))
+	for _, entity := range entities {
+		occupied = append(occupied, domain.Point{X: entity.X, Y: entity.Y})
+	}
+
+	candidates := forestCandidates(forest, minForestTreeGapTiles)
+	shufflePoints(candidates)
+	for _, slot := range candidates {
+		if !canPlaceForestTree(slot, occupied, minForestTreeGapTiles) {
+			continue
+		}
+		return buildResourceEntity(userID, slot, definition), true
+	}
+	return domain.Entity{}, false
 }
 
 func stumpExpired(entity domain.Entity, now time.Time) bool {
@@ -227,4 +289,51 @@ func randomIndex(length int) int {
 		return 0
 	}
 	return int(randomUnitFloat() * float64(length))
+}
+
+func forestCandidates(forest forestArea, minGap int) []domain.Point {
+	step := minGap
+	if step <= 0 {
+		step = 1
+	}
+
+	width := (forest.MaxX-forest.MinX)/step + 1
+	height := (forest.MaxY-forest.MinY)/step + 1
+	candidates := make([]domain.Point, 0, width*height)
+	for y := forest.MinY; y <= forest.MaxY; y += step {
+		for x := forest.MinX; x <= forest.MaxX; x += step {
+			candidates = append(candidates, domain.Point{X: x, Y: y})
+		}
+	}
+	return candidates
+}
+
+func shufflePoints(points []domain.Point) {
+	for index := len(points) - 1; index > 0; index-- {
+		swapIndex := randomIndex(index + 1)
+		points[index], points[swapIndex] = points[swapIndex], points[index]
+	}
+}
+
+func canPlaceForestTree(candidate domain.Point, occupied []domain.Point, minGap int) bool {
+	for _, point := range occupied {
+		if !hasMinimumGap(candidate, point, minGap) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasMinimumGap(a domain.Point, b domain.Point, minGap int) bool {
+	if minGap <= 0 {
+		return true
+	}
+	return absInt(a.X-b.X) >= minGap || absInt(a.Y-b.Y) >= minGap
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }

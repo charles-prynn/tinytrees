@@ -19,6 +19,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   bool _inventoryOpen = false;
   bool _loginOpen = false;
   bool _registrationOpen = false;
+  bool _minimapVisible = true;
   bool _animationDebugOpen = false;
   PlayerCharacterAnimation? _debugAnimationOverride;
   final List<DateTime> _tripleThreePresses = <DateTime>[];
@@ -153,6 +154,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 inventoryOpen: _inventoryOpen,
                 loginOpen: _loginOpen,
                 registrationOpen: _registrationOpen,
+                minimapVisible: _minimapVisible,
                 showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
@@ -198,6 +200,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     if (event is! KeyDownEvent) {
       return;
     }
+    if (event.logicalKey == LogicalKeyboardKey.digit4 ||
+        event.logicalKey == LogicalKeyboardKey.numpad4) {
+      _toggleMinimap();
+      return;
+    }
     if (event.logicalKey != LogicalKeyboardKey.digit3 &&
         event.logicalKey != LogicalKeyboardKey.numpad3) {
       return;
@@ -220,6 +227,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
     setState(() {
       _animationDebugOpen = !_animationDebugOpen;
+    });
+  }
+
+  void _toggleMinimap() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _minimapVisible = !_minimapVisible;
     });
   }
 

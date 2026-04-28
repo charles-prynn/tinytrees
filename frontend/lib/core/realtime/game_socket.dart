@@ -355,6 +355,7 @@ class GameSocket {
     try {
       await request('ping');
       await request('player.get');
+      await request('entities.get');
       await request('inventory.get');
       _debugLog('resync-ok');
     } catch (error) {

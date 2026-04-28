@@ -1,10 +1,17 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/data/auth_controller.dart';
+import '../../entities/data/entity_repository.dart';
+import '../../entities/domain/world_entity.dart';
 import '../../auth/domain/auth_session.dart';
 import '../../inventory/data/inventory_repository.dart';
 import '../../inventory/domain/inventory_item.dart';
+import '../../map/application/map_controller.dart';
+import '../../map/domain/tile_map.dart';
 import '../../player/application/player_controller.dart';
 import '../../player/domain/player_state.dart';
 import '../tree_resource_palette.dart';
@@ -31,6 +38,7 @@ part 'game_hud_parts/shared/divider_stud.dart';
 part 'game_hud_parts/shared/top_bar_icon_well.dart';
 part 'game_hud_parts/shared/top_bar_progress_bar.dart';
 part 'game_hud_parts/shared/top_bar_placeholder_line.dart';
+part 'game_hud_parts/minimap/minimap_overlay.dart';
 
 class GameHud extends ConsumerWidget {
   const GameHud({
@@ -38,6 +46,7 @@ class GameHud extends ConsumerWidget {
     required this.inventoryOpen,
     required this.loginOpen,
     required this.registrationOpen,
+    required this.minimapVisible,
     required this.showCoordinateDebug,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
@@ -50,6 +59,7 @@ class GameHud extends ConsumerWidget {
   final bool inventoryOpen;
   final bool loginOpen;
   final bool registrationOpen;
+  final bool minimapVisible;
   final bool showCoordinateDebug;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
@@ -75,6 +85,16 @@ class GameHud extends ConsumerWidget {
             ),
           ),
         ),
+        if (minimapVisible)
+          const SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(12, 66, 12, 0),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IgnorePointer(child: MinimapOverlay()),
+              ),
+            ),
+          ),
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),

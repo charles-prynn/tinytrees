@@ -21,6 +21,7 @@ const (
 	wsReadLimit             = 32 * 1024
 	wsPlayerUpdateInterval  = 200 * time.Millisecond
 	wsInventoryUpdatePeriod = time.Second
+	wsEntityUpdatePeriod    = 200 * time.Millisecond
 )
 
 type wsClientMessage struct {
@@ -93,12 +94,15 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, write func(wsServerMessage) error) {
 	playerTicker := time.NewTicker(wsPlayerUpdateInterval)
 	inventoryTicker := time.NewTicker(wsInventoryUpdatePeriod)
+	entityTicker := time.NewTicker(wsEntityUpdatePeriod)
 	defer playerTicker.Stop()
 	defer inventoryTicker.Stop()
+	defer entityTicker.Stop()
 
 	var lastPlayerJSON []byte
 	var lastActionJSON []byte
 	var lastInventoryJSON []byte
+	var lastEntityJSON []byte
 
 	for {
 		select {
@@ -129,6 +133,22 @@ func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, wri
 					return
 				}
 				lastActionJSON = actionJSON
+			}
+		case <-entityTicker.C:
+			entities, err := h.entities.List(ctx, userID)
+			if err != nil {
+				continue
+			}
+			entityDTOs := toEntityDTOs(entities)
+			entityJSON, err := json.Marshal(entityDTOs)
+			if err == nil && !jsonEqual(lastEntityJSON, entityJSON) {
+				if err := write(wsServerMessage{
+					Type: "entities.updated",
+					Data: map[string]any{"entities": entityDTOs},
+				}); err != nil {
+					return
+				}
+				lastEntityJSON = entityJSON
 			}
 		case <-inventoryTicker.C:
 			items, err := h.inventory.List(ctx, userID)
@@ -226,6 +246,16 @@ func (h *Handler) handleWebSocketMessage(r *http.Request, userID uuid.UUID, mess
 			ID:   message.ID,
 			Type: "inventory.updated",
 			Data: map[string]any{"items": toInventoryDTOs(items)},
+		}
+	case "entities.get":
+		entities, err := h.entities.List(r.Context(), userID)
+		if err != nil {
+			return wsError(message.ID, "entities.get.error", err)
+		}
+		return wsServerMessage{
+			ID:   message.ID,
+			Type: "entities.updated",
+			Data: map[string]any{"entities": toEntityDTOs(entities)},
 		}
 	default:
 		return wsError(message.ID, "message.error", service.ErrValidation)
