@@ -115,7 +115,66 @@ func TestActionServiceStartHarvestRequiresTreeLevel(t *testing.T) {
 	}
 }
 
-func TestActionServiceResolveDepletesTreeOnReward(t *testing.T) {
+func TestActionServiceStartHarvestUsesTreeHarvestDuration(t *testing.T) {
+	userID := uuid.New()
+	now := time.Date(2026, time.April, 28, 12, 0, 0, 0, time.UTC)
+	entityID := uuid.New()
+
+	service := NewActionService(
+		&memoryActions{},
+		&memoryInventory{},
+		&memorySkills{
+			skills: map[string]domain.PlayerSkill{
+				"woodcutting": {
+					UserID:   userID,
+					SkillKey: "woodcutting",
+					Level:    75,
+				},
+			},
+		},
+		&memoryPlayerStore{
+			player: domain.Player{UserID: userID, X: 9, Y: 9},
+		},
+		&memoryEntities{
+			items: []domain.Entity{
+				{
+					ID:          entityID,
+					UserID:      userID,
+					Name:        "Magic Tree",
+					Type:        "resource",
+					ResourceKey: "magic_tree",
+					X:           10,
+					Y:           10,
+					Width:       1,
+					Height:      1,
+					State:       resourceStateIdle,
+					Metadata: map[string]any{
+						"reward_item_key":          "magic_logs",
+						"reward_quantity":          int64(1),
+						"skill_key":                "woodcutting",
+						"xp_per_reward":            int64(250),
+						"required_level":           int64(75),
+						"harvest_duration_seconds": int64(time.Hour / time.Second),
+					},
+				},
+			},
+		},
+	)
+	service.now = func() time.Time { return now }
+
+	action, err := service.StartHarvest(context.Background(), userID, entityID)
+	if err != nil {
+		t.Fatalf("StartHarvest returned error: %v", err)
+	}
+	if got := action.EndsAt.Sub(action.StartedAt); got != time.Hour {
+		t.Fatalf("expected harvest duration of 1 hour, got %s", got)
+	}
+	if got := action.Metadata["duration_seconds"]; got != float64(time.Hour/time.Second) {
+		t.Fatalf("expected duration_seconds metadata to be 3600, got %#v", got)
+	}
+}
+
+func TestActionServiceResolveDepletesTreeWhenHarvestDurationEnds(t *testing.T) {
 	userID := uuid.New()
 	entityID := uuid.New()
 	startedAt := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
@@ -130,12 +189,11 @@ func TestActionServiceResolveDepletesTreeOnReward(t *testing.T) {
 		NextTickAt:     startedAt.Add(time.Second),
 		TickIntervalMs: 1000,
 		Metadata: map[string]any{
-			"reward_item_key":   "oak_logs",
-			"reward_quantity":   int64(1),
-			"success_chance":    1.0,
-			"skill_key":         "woodcutting",
-			"xp_per_reward":     int64(38),
-			"deplete_on_reward": true,
+			"reward_item_key": "oak_logs",
+			"reward_quantity": int64(1),
+			"success_chance":  1.0,
+			"skill_key":       "woodcutting",
+			"xp_per_reward":   int64(38),
 		},
 	}
 	entities := &memoryEntities{

@@ -20,21 +20,22 @@ const (
 )
 
 type treeDefinition struct {
-	Key           string
-	Name          string
-	RequiredLevel int64
-	RewardItemKey string
-	XPPerReward   int64
+	Key             string
+	Name            string
+	RequiredLevel   int64
+	RewardItemKey   string
+	XPPerReward     int64
+	HarvestDuration time.Duration
 }
 
 var (
 	treeDefinitions = []treeDefinition{
-		{Key: "tree", Name: "Tree", RequiredLevel: 1, RewardItemKey: "logs", XPPerReward: 25},
-		{Key: "oak_tree", Name: "Oak Tree", RequiredLevel: 15, RewardItemKey: "oak_logs", XPPerReward: 38},
-		{Key: "willow_tree", Name: "Willow Tree", RequiredLevel: 30, RewardItemKey: "willow_logs", XPPerReward: 68},
-		{Key: "maple_tree", Name: "Maple Tree", RequiredLevel: 45, RewardItemKey: "maple_logs", XPPerReward: 100},
-		{Key: "yew_tree", Name: "Yew Tree", RequiredLevel: 60, RewardItemKey: "yew_logs", XPPerReward: 175},
-		{Key: "magic_tree", Name: "Magic Tree", RequiredLevel: 75, RewardItemKey: "magic_logs", XPPerReward: 250},
+		{Key: "tree", Name: "Tree", RequiredLevel: 1, RewardItemKey: "logs", XPPerReward: 25, HarvestDuration: 10 * time.Minute},
+		{Key: "oak_tree", Name: "Oak Tree", RequiredLevel: 15, RewardItemKey: "oak_logs", XPPerReward: 38, HarvestDuration: 15 * time.Minute},
+		{Key: "willow_tree", Name: "Willow Tree", RequiredLevel: 30, RewardItemKey: "willow_logs", XPPerReward: 68, HarvestDuration: 20 * time.Minute},
+		{Key: "maple_tree", Name: "Maple Tree", RequiredLevel: 45, RewardItemKey: "maple_logs", XPPerReward: 100, HarvestDuration: 30 * time.Minute},
+		{Key: "yew_tree", Name: "Yew Tree", RequiredLevel: 60, RewardItemKey: "yew_logs", XPPerReward: 175, HarvestDuration: 45 * time.Minute},
+		{Key: "magic_tree", Name: "Magic Tree", RequiredLevel: 75, RewardItemKey: "magic_logs", XPPerReward: 250, HarvestDuration: time.Hour},
 	}
 	treeTargetCounts = map[string]int{
 		"tree":        3,
@@ -130,11 +131,12 @@ func buildResourceEntity(userID uuid.UUID, slot domain.Point, definition treeDef
 		SpriteGID:   5,
 		State:       resourceStateIdle,
 		Metadata: map[string]any{
-			"reward_item_key": definition.RewardItemKey,
-			"reward_quantity": defaultResourceRewardQuantity,
-			"skill_key":       defaultResourceSkillKey,
-			"xp_per_reward":   definition.XPPerReward,
-			"required_level":  definition.RequiredLevel,
+			"reward_item_key":          definition.RewardItemKey,
+			"reward_quantity":          defaultResourceRewardQuantity,
+			"skill_key":                defaultResourceSkillKey,
+			"xp_per_reward":            definition.XPPerReward,
+			"required_level":           definition.RequiredLevel,
+			"harvest_duration_seconds": int64(definition.HarvestDuration / time.Second),
 		},
 	}
 }
@@ -205,6 +207,19 @@ func stumpExpired(entity domain.Entity, now time.Time) bool {
 
 func requiredLevelForEntity(entity domain.Entity) int64 {
 	return int64Metadata(entity.Metadata, "required_level", resourceDefinition(entity).RequiredLevel)
+}
+
+func harvestDurationForEntity(entity domain.Entity) time.Duration {
+	definition := resourceDefinition(entity)
+	durationSeconds := int64Metadata(
+		entity.Metadata,
+		"harvest_duration_seconds",
+		int64(definition.HarvestDuration/time.Second),
+	)
+	if durationSeconds <= 0 {
+		return defaultHarvestDuration
+	}
+	return time.Duration(durationSeconds) * time.Second
 }
 
 func randomIndex(length int) int {

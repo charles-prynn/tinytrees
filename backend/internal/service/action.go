@@ -123,6 +123,7 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 	}
 
 	tickInterval := harvestTickInterval(currentLevel, requiredLevelForEntity(entity))
+	harvestDuration := harvestDurationForEntity(entity)
 
 	action := domain.PlayerAction{
 		ID:             uuid.New(),
@@ -131,23 +132,23 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 		EntityID:       &entityID,
 		Status:         "active",
 		StartedAt:      now,
-		EndsAt:         now.Add(tickInterval),
+		EndsAt:         now.Add(harvestDuration),
 		NextTickAt:     now.Add(tickInterval),
 		TickIntervalMs: int(tickInterval / time.Millisecond),
 		Metadata: map[string]any{
-			"resource_key":      entity.ResourceKey,
-			"reward_item_key":   harvestRewardItemKey(entity),
-			"reward_quantity":   harvestRewardQuantity(entity),
-			"success_chance":    harvestSuccessChance(entity),
-			"skill_key":         skillKey,
-			"xp_per_reward":     harvestXPPerReward(entity),
-			"ticks_processed":   0,
-			"rewards_granted":   0,
-			"xp_granted":        0,
-			"current_level":     currentLevel,
-			"duration_seconds":  tickInterval.Milliseconds() / 1000.0,
-			"deplete_on_reward": true,
-			"required_level":    requiredLevelForEntity(entity),
+			"resource_key":             entity.ResourceKey,
+			"reward_item_key":          harvestRewardItemKey(entity),
+			"reward_quantity":          harvestRewardQuantity(entity),
+			"success_chance":           harvestSuccessChance(entity),
+			"skill_key":                skillKey,
+			"xp_per_reward":            harvestXPPerReward(entity),
+			"ticks_processed":          0,
+			"rewards_granted":          0,
+			"xp_granted":               0,
+			"current_level":            currentLevel,
+			"duration_seconds":         harvestDuration.Seconds(),
+			"harvest_duration_seconds": int64(harvestDuration / time.Second),
+			"required_level":           requiredLevelForEntity(entity),
 		},
 	}
 	return s.actions.CreateAction(ctx, action)
@@ -182,7 +183,6 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	xpGranted := int64Metadata(action.Metadata, "xp_granted", 0)
 	levelUps := int64Metadata(action.Metadata, "level_ups", 0)
 	currentLevel := int64Metadata(action.Metadata, "current_level", 0)
-	depleteOnReward := boolMetadata(action.Metadata, "deplete_on_reward", false)
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
 		if randomUnitFloat() < successChance {
@@ -201,20 +201,6 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 				}
 				currentLevel = int64(skill.Level)
 			}
-			if depleteOnReward && action.EntityID != nil && s.entities != nil {
-				entity, ok, err := s.entityByID(ctx, userID, *action.EntityID)
-				if err != nil {
-					return nil, err
-				}
-				if ok && entity.State != resourceStateDepleted {
-					if _, err := depleteResourceNode(ctx, s.entities, entity, now); err != nil {
-						return nil, err
-					}
-				}
-				action.Status = "completed"
-				action.NextTickAt = action.EndsAt
-				break
-			}
 		}
 		action.NextTickAt = action.NextTickAt.Add(tickInterval)
 	}
@@ -228,6 +214,17 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	}
 	if !now.Before(action.EndsAt) {
 		action.Status = "completed"
+		if action.EntityID != nil && s.entities != nil {
+			entity, ok, err := s.entityByID(ctx, userID, *action.EntityID)
+			if err != nil {
+				return nil, err
+			}
+			if ok && entity.State != resourceStateDepleted {
+				if _, err := depleteResourceNode(ctx, s.entities, entity, now); err != nil {
+					return nil, err
+				}
+			}
+		}
 	}
 
 	saved, err := s.actions.SaveAction(ctx, *action)
@@ -362,17 +359,6 @@ func floatMetadata(metadata map[string]any, key string, fallback float64) float6
 		}
 	}
 	return fallback
-}
-
-func boolMetadata(metadata map[string]any, key string, fallback bool) bool {
-	if metadata == nil {
-		return fallback
-	}
-	value, ok := metadata[key].(bool)
-	if !ok {
-		return fallback
-	}
-	return value
 }
 
 type jsonNumber interface {
