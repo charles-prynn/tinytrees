@@ -8,6 +8,9 @@ class InventorySlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = item == null ? '' : item!.itemKey.replaceAll('_', ' ').trim();
+    final usesLogIcon =
+        item != null && logItemResourceKeys.containsKey(item!.itemKey);
+    final tintColor = item == null ? null : logItemTintColor(item!.itemKey);
     final initials =
         label.isEmpty
             ? ''
@@ -43,13 +46,38 @@ class InventorySlot extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          initials,
-                          style: const TextStyle(
-                            color: Color(0xFFE3D8C3),
-                            fontSize: 7.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1,
+                        Expanded(
+                          child: Center(
+                            child:
+                                usesLogIcon
+                                    ? ColorFiltered(
+                                      colorFilter:
+                                          tintColor == null
+                                              ? const ColorFilter.mode(
+                                                Colors.white,
+                                                BlendMode.modulate,
+                                              )
+                                              : ColorFilter.mode(
+                                                tintColor,
+                                                BlendMode.modulate,
+                                              ),
+                                      child: Image.asset(
+                                        'assets/images/entities/inventory_log.png',
+                                        width: 28,
+                                        height: 28,
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.none,
+                                      ),
+                                    )
+                                    : Text(
+                                      initials,
+                                      style: const TextStyle(
+                                        color: Color(0xFFE3D8C3),
+                                        fontSize: 7.5,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1,
+                                      ),
+                                    ),
                           ),
                         ),
                         Text(

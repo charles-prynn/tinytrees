@@ -61,9 +61,7 @@ class TileMapGame extends FlameGame with PanDetector {
       final walkIcon = await images.load('sprites/walk_icon.png');
       final playerCharacter = await PlayerCharacterSheet.load(images);
       final entityImages = {
-        'animated_autumn_tree': await images.load(
-          'entities/animated_autumn_tree.png',
-        ),
+        'animated_tree': await images.load('entities/animated_tree.png'),
       };
       _renderer = TileMapRenderer(
         tileset: tileset,

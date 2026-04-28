@@ -7,6 +7,7 @@ import '../../inventory/data/inventory_repository.dart';
 import '../../inventory/domain/inventory_item.dart';
 import '../../player/application/player_controller.dart';
 import '../../player/domain/player_state.dart';
+import '../tree_resource_palette.dart';
 import 'login_popup.dart';
 import 'registration_popup.dart';
 

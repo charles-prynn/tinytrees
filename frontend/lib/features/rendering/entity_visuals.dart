@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import '../shared/tree_resource_palette.dart';
+
 part 'entity_visuals_parts/entity_frame.dart';
 part 'entity_visuals_parts/entity_animation_definition.dart';
 part 'entity_visuals_parts/entity_visual_definition.dart';
@@ -31,7 +33,7 @@ const EntityAnimationDefinition _treeStumpAnimation = EntityAnimationDefinition(
 
 EntityVisualDefinition _treeVisual({Color? tintColor}) {
   return EntityVisualDefinition(
-    imageKey: 'animated_autumn_tree',
+    imageKey: 'animated_tree',
     drawWidthTiles: 2.4375,
     drawHeightTiles: 4,
     anchorXTiles: 1.21875,
@@ -43,10 +45,6 @@ EntityVisualDefinition _treeVisual({Color? tintColor}) {
 }
 
 final Map<String, EntityVisualDefinition> entityVisualDefinitions = {
-  'tree': _treeVisual(),
-  'oak_tree': _treeVisual(tintColor: const Color(0xFFD7A45F)),
-  'willow_tree': _treeVisual(tintColor: const Color(0xFF81C784)),
-  'maple_tree': _treeVisual(tintColor: const Color(0xFFE67E45)),
-  'yew_tree': _treeVisual(tintColor: const Color(0xFF4E7A4A)),
-  'magic_tree': _treeVisual(tintColor: const Color(0xFF7CC7D9)),
+  for (final entry in treeResourceTintColors.entries)
+    entry.key: _treeVisual(tintColor: entry.value),
 };
