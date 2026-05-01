@@ -20,6 +20,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   bool _loginOpen = false;
   bool _registrationOpen = false;
   bool _minimapVisible = true;
+  bool _useLowPolyPlayer = false;
   math.Point<int>? _selectedMinimapTile;
   bool _animationDebugOpen = false;
   PlayerCharacterAnimation? _debugAnimationOverride;
@@ -157,11 +158,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 loginOpen: _loginOpen,
                 registrationOpen: _registrationOpen,
                 minimapVisible: _minimapVisible,
+                useLowPolyPlayer: _useLowPolyPlayer,
                 showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
                 selectedMinimapTile: _selectedMinimapTile,
                 onMinimapTileSelected: _handleMinimapTileSelected,
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
+                onPlayerRenderModeToggle: _togglePlayerRenderMode,
                 onLoginPressed: _openLogin,
                 onLoginClosed: _closeLogin,
                 onRegistrationPressed: _openRegistration,
@@ -209,6 +212,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       _toggleMinimap();
       return;
     }
+    if (event.logicalKey == LogicalKeyboardKey.digit5 ||
+        event.logicalKey == LogicalKeyboardKey.numpad5) {
+      _togglePlayerRenderMode();
+      return;
+    }
     if (event.logicalKey != LogicalKeyboardKey.digit3 &&
         event.logicalKey != LogicalKeyboardKey.numpad3) {
       return;
@@ -240,6 +248,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
     setState(() {
       _minimapVisible = !_minimapVisible;
+    });
+  }
+
+  void _togglePlayerRenderMode() {
+    _game.togglePlayerRenderMode();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _useLowPolyPlayer = !_useLowPolyPlayer;
     });
   }
 

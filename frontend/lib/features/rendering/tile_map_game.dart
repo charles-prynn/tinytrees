@@ -21,6 +21,7 @@ part 'tile_map_game_support/entity_render_layer.dart';
 part 'tile_map_game_support/player_facing.dart';
 part 'tile_map_game_support/entity_interaction_target.dart';
 part 'tile_map_game_support/player_pose.dart';
+part 'tile_map_game_support/player_low_poly_renderer.dart';
 part 'tile_map_game_support/player_render_motion.dart';
 part 'tile_map_game_support/walk_icon_effect.dart';
 part 'tile_map_game_support/xp_drop_effect.dart';
@@ -42,6 +43,7 @@ class TileMapGame extends FlameGame with PanDetector {
   TileMap? _pendingMap;
   List<WorldEntity> _pendingEntities = const [];
   PlayerState? _pendingPlayer;
+  bool _useLowPolyPlayer = false;
   TileMapRenderer? _renderer;
 
   @override
@@ -71,6 +73,7 @@ class TileMapGame extends FlameGame with PanDetector {
         renderConfig: _renderConfig,
         showDebugLabels: _showCoordinateDebug,
       );
+      _renderer!.useLowPolyPlayer = _useLowPolyPlayer;
       await add(_renderer!);
       await _renderer!.warmUpInteractions();
       if (_showFps) {
@@ -167,6 +170,11 @@ class TileMapGame extends FlameGame with PanDetector {
 
   void setDebugAnimationOverride(PlayerCharacterAnimation? animation) {
     _renderer?.debugAnimationOverride = animation;
+  }
+
+  void togglePlayerRenderMode() {
+    _useLowPolyPlayer = !_useLowPolyPlayer;
+    _renderer?.useLowPolyPlayer = _useLowPolyPlayer;
   }
 
   @override

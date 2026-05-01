@@ -33,6 +33,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   static const _occludingTreeOpacity = 0.7;
   static const _playerRenderSmoothingSeconds = 0.36;
   static const _playerWalkAnimationDistanceThreshold = 0.06;
+  static const _playerYawTurnSpeedRadiansPerSecond = 7.5;
   TileMap? tileMap;
   List<WorldEntity> entities = const [];
   final List<_WalkIconEffect> _walkIconEffects = [];
@@ -45,6 +46,8 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   PlayerState? _player;
   _PlayerRenderMotion? _playerRenderMotion;
   _PlayerDirection _lastPlayerDirection = _PlayerDirection.front;
+  double _lastPlayerModelYaw = math.pi / 4;
+  double _lastPlayerModelYawSampleAtSeconds = 0;
   PlayerCharacterAnimation? debugAnimationOverride;
   double _panX = 0;
   double _panY = 0;
@@ -52,6 +55,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   bool _needsCentering = true;
   Vector2? _lastGameSize;
   bool _interactionWarmUpDone = false;
+  bool useLowPolyPlayer = false;
 
   PlayerState? get player => _player;
 
@@ -109,7 +113,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return;
     }
     final delta = target - currentRenderPosition;
-    _lastPlayerDirection = _directionForDelta(delta);
+    _lastPlayerDirection = _cardinalDirectionForDelta(delta);
     if (delta.distance > 1.5) {
       _playerRenderMotion = _PlayerRenderMotion.snap(target);
       return;
@@ -534,6 +538,17 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
             : pose.isMoving
             ? PlayerCharacterAnimation.walk
             : PlayerCharacterAnimation.idle);
+    if (useLowPolyPlayer) {
+      _drawLowPolyPlayer(
+        canvas: canvas,
+        pose: pose,
+        offset: offset,
+        drawTileSize: drawTileSize,
+        elapsedSeconds: _elapsedSeconds,
+        animation: animation,
+      );
+      return;
+    }
     final direction = switch (pose.direction) {
       _PlayerDirection.front => PlayerCharacterDirection.down,
       _PlayerDirection.left => PlayerCharacterDirection.left,
@@ -843,6 +858,33 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       PlayerCharacterAnimation.walk,
       PlayerCharacterAnimation.slash,
     ];
+    const modelYaws = <double>[
+      -math.pi,
+      -math.pi * 3 / 4,
+      -math.pi / 2,
+      -math.pi / 4,
+      0,
+      math.pi / 4,
+      math.pi / 2,
+      math.pi * 3 / 4,
+    ];
+    for (final animation in animations) {
+      for (final modelYaw in modelYaws) {
+        _drawLowPolyPlayer(
+          canvas: canvas,
+          pose: _PlayerPose(
+            position: Offset.zero,
+            direction: _PlayerDirection.front,
+            modelYaw: modelYaw,
+            isMoving: animation == PlayerCharacterAnimation.walk,
+          ),
+          offset: const Offset(24, 24),
+          drawTileSize: 64,
+          elapsedSeconds: 0.2,
+          animation: animation,
+        );
+      }
+    }
     for (final animation in animations) {
       for (final direction in PlayerCharacterDirection.values) {
         for (final layer in _playerCharacter.layers) {
@@ -1285,9 +1327,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       _lastPlayerDirection = harvestDirection;
       final renderPosition =
           _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
+      final targetYaw = _modelYawForCardinal(harvestDirection);
       return _PlayerPose(
         position: renderPosition,
         direction: harvestDirection,
+        modelYaw: _smoothedModelYaw(targetYaw),
         isMoving: false,
       );
     }
@@ -1296,9 +1340,11 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final renderPosition =
         _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
     if (movement == null || movement.path.isEmpty) {
+      final targetYaw = _modelYawForCardinal(_lastPlayerDirection);
       return _PlayerPose(
         position: renderPosition,
         direction: _lastPlayerDirection,
+        modelYaw: _smoothedModelYaw(targetYaw),
         isMoving: _shouldUseWalkAnimation(
           current: current,
           renderPosition: renderPosition,
@@ -1306,16 +1352,21 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         ),
       );
     }
-    final direction = _directionForDelta(
-      Offset(
-        (movement.targetX - current.x).toDouble(),
-        (movement.targetY - current.y).toDouble(),
-      ),
+    final delta = Offset(
+      (movement.targetX - current.x).toDouble(),
+      (movement.targetY - current.y).toDouble(),
     );
+    final direction = _cardinalDirectionForDelta(delta);
     _lastPlayerDirection = direction;
+    final movementDelta = _movementDeltaFor(movement, now) ?? delta;
+    final targetYaw =
+        movementDelta.distanceSquared > 0
+            ? _modelYawForDelta(movementDelta)
+            : _modelYawForCardinal(direction);
     return _PlayerPose(
       position: renderPosition,
       direction: direction,
+      modelYaw: _smoothedModelYaw(targetYaw),
       isMoving: _shouldUseWalkAnimation(
         current: current,
         renderPosition: renderPosition,
@@ -1382,7 +1433,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     return null;
   }
 
-  _PlayerDirection _directionForDelta(Offset delta) {
+  _PlayerDirection _cardinalDirectionForDelta(Offset delta) {
     if (delta.dx.abs() >= delta.dy.abs() && delta.dx != 0) {
       return delta.dx > 0 ? _PlayerDirection.right : _PlayerDirection.left;
     }
@@ -1390,6 +1441,94 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return delta.dy > 0 ? _PlayerDirection.front : _PlayerDirection.back;
     }
     return _lastPlayerDirection;
+  }
+
+  Offset? _movementDeltaFor(PlayerMovement movement, DateTime now) {
+    final path = movement.path;
+    if (path.length < 2) {
+      return null;
+    }
+
+    if (!now.isAfter(movement.startedAt)) {
+      return _offsetBetween(path[0], path[1]);
+    }
+
+    var distance =
+        now.difference(movement.startedAt).inMicroseconds /
+        Duration.microsecondsPerSecond *
+        movement.speedTilesPerSecond;
+    for (var i = 0; i < path.length - 1; i++) {
+      final from = path[i];
+      final to = path[i + 1];
+      final cost = _pathStepCost(from, to);
+      if (distance <= cost) {
+        return _offsetBetween(from, to);
+      }
+      distance -= cost;
+    }
+
+    return _offsetBetween(path[path.length - 2], path.last);
+  }
+
+  Offset _offsetBetween(MapPoint from, MapPoint to) {
+    return Offset((to.x - from.x).toDouble(), (to.y - from.y).toDouble());
+  }
+
+  double _pathStepCost(MapPoint from, MapPoint to) {
+    final dx = (from.x - to.x).abs().toDouble();
+    final dy = (from.y - to.y).abs().toDouble();
+    if (dx == 1 && dy == 1) {
+      return math.sqrt2;
+    }
+    return math.max(dx, dy);
+  }
+
+  double _modelYawForCardinal(_PlayerDirection direction) {
+    return switch (direction) {
+      _PlayerDirection.front => math.pi / 4,
+      _PlayerDirection.right => -math.pi / 4,
+      _PlayerDirection.left => math.pi * 3 / 4,
+      _PlayerDirection.back => -math.pi * 3 / 4,
+    };
+  }
+
+  double _modelYawForDelta(Offset delta) {
+    if (delta.distanceSquared == 0) {
+      return _lastPlayerModelYaw;
+    }
+    return _normalizeAngle(math.atan2(delta.dy, delta.dx) - math.pi / 4);
+  }
+
+  double _smoothedModelYaw(double targetYaw) {
+    final dt =
+        (_elapsedSeconds - _lastPlayerModelYawSampleAtSeconds)
+            .clamp(0, 0.25)
+            .toDouble();
+    _lastPlayerModelYawSampleAtSeconds = _elapsedSeconds;
+    final currentYaw = _normalizeAngle(_lastPlayerModelYaw);
+    final delta = _shortestAngleDelta(currentYaw, targetYaw);
+    final maxStep = _playerYawTurnSpeedRadiansPerSecond * dt;
+    if (delta.abs() <= maxStep) {
+      _lastPlayerModelYaw = _normalizeAngle(targetYaw);
+      return _lastPlayerModelYaw;
+    }
+    _lastPlayerModelYaw = _normalizeAngle(currentYaw + maxStep * delta.sign);
+    return _lastPlayerModelYaw;
+  }
+
+  double _shortestAngleDelta(double from, double to) {
+    return _normalizeAngle(to - from);
+  }
+
+  double _normalizeAngle(double angle) {
+    var normalized = angle;
+    while (normalized <= -math.pi) {
+      normalized += math.pi * 2;
+    }
+    while (normalized > math.pi) {
+      normalized -= math.pi * 2;
+    }
+    return normalized;
   }
 
   double _clampPanX(double panX, TileMap map, double tileSize) {

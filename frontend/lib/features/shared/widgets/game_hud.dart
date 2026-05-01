@@ -47,11 +47,13 @@ class GameHud extends ConsumerWidget {
     required this.loginOpen,
     required this.registrationOpen,
     required this.minimapVisible,
+    required this.useLowPolyPlayer,
     required this.showCoordinateDebug,
     required this.selectedMinimapTile,
     required this.onMinimapTileSelected,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
+    required this.onPlayerRenderModeToggle,
     required this.onLoginPressed,
     required this.onLoginClosed,
     required this.onRegistrationPressed,
@@ -62,11 +64,13 @@ class GameHud extends ConsumerWidget {
   final bool loginOpen;
   final bool registrationOpen;
   final bool minimapVisible;
+  final bool useLowPolyPlayer;
   final bool showCoordinateDebug;
   final math.Point<int>? selectedMinimapTile;
   final ValueChanged<math.Point<int>> onMinimapTileSelected;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
+  final VoidCallback onPlayerRenderModeToggle;
   final VoidCallback onLoginPressed;
   final VoidCallback onLoginClosed;
   final VoidCallback onRegistrationPressed;
@@ -117,6 +121,18 @@ class GameHud extends ConsumerWidget {
             ),
           ),
         ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+            child: Align(
+              alignment: Alignment.bottomRight,
+              child: _PlayerRenderModeButton(
+                useLowPolyPlayer: useLowPolyPlayer,
+                onPressed: onPlayerRenderModeToggle,
+              ),
+            ),
+          ),
+        ),
         IgnorePointer(
           ignoring: !loginOpen,
           child: Offstage(
@@ -132,6 +148,90 @@ class GameHud extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PlayerRenderModeButton extends StatelessWidget {
+  const _PlayerRenderModeButton({
+    required this.useLowPolyPlayer,
+    required this.onPressed,
+  });
+
+  final bool useLowPolyPlayer;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = useLowPolyPlayer;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onPressed,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors:
+                  active
+                      ? const [Color(0xFF345A43), Color(0xFF223A2C)]
+                      : const [Color(0xFF5E4630), Color(0xFF3A2A1B)],
+            ),
+            border: Border.all(
+              color: active ? const Color(0xFF8BD3A3) : const Color(0xFFC9A06B),
+              width: 1.2,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x55000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Player',
+                  style: TextStyle(
+                    color:
+                        active
+                            ? const Color(0xFFD9F3E2)
+                            : const Color(0xFFF1DEC4),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Render',
+                  style: TextStyle(
+                    color: Color(0xCFFFFFFF),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                Text(
+                  active ? '3D' : '2D',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
