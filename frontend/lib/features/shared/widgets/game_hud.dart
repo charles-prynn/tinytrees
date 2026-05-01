@@ -48,6 +48,8 @@ class GameHud extends ConsumerWidget {
     required this.registrationOpen,
     required this.minimapVisible,
     required this.showCoordinateDebug,
+    required this.selectedMinimapTile,
+    required this.onMinimapTileSelected,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
     required this.onLoginPressed,
@@ -61,6 +63,8 @@ class GameHud extends ConsumerWidget {
   final bool registrationOpen;
   final bool minimapVisible;
   final bool showCoordinateDebug;
+  final math.Point<int>? selectedMinimapTile;
+  final ValueChanged<math.Point<int>> onMinimapTileSelected;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
   final VoidCallback onLoginPressed;
@@ -86,12 +90,15 @@ class GameHud extends ConsumerWidget {
           ),
         ),
         if (minimapVisible)
-          const SafeArea(
+          SafeArea(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(12, 66, 12, 0),
+              padding: const EdgeInsets.fromLTRB(12, 66, 12, 0),
               child: Align(
                 alignment: Alignment.topRight,
-                child: IgnorePointer(child: MinimapOverlay()),
+                child: MinimapOverlay(
+                  selectedTile: selectedMinimapTile,
+                  onTileSelected: onMinimapTileSelected,
+                ),
               ),
             ),
           ),

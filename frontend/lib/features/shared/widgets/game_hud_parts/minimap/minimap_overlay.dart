@@ -1,11 +1,17 @@
 part of '../../game_hud.dart';
 
 class MinimapOverlay extends ConsumerStatefulWidget {
-  const MinimapOverlay({super.key});
+  const MinimapOverlay({
+    super.key,
+    required this.selectedTile,
+    required this.onTileSelected,
+  });
 
   static const double _panelWidth = 156;
   static const double _panelHeight = 156;
   static const double _mapInset = 10;
+  final math.Point<int>? selectedTile;
+  final ValueChanged<math.Point<int>> onTileSelected;
 
   @override
   ConsumerState<MinimapOverlay> createState() => _MinimapOverlayState();
@@ -15,6 +21,18 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
   ui.Image? _mapImage;
   TileMap? _mapImageSource;
   Object? _mapBuildToken;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual<AsyncValue<TileMap>>(mapControllerProvider, (_, next) {
+      next.whenData((map) {
+        if (!identical(_mapImageSource, map)) {
+          _queueMapImageBuild(map);
+        }
+      });
+    }, fireImmediately: true);
+  }
 
   @override
   void dispose() {
@@ -30,10 +48,6 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
 
     if (map == null || player == null) {
       return const SizedBox.shrink();
-    }
-
-    if (!identical(_mapImageSource, map)) {
-      _queueMapImageBuild(map);
     }
 
     return SizedBox(
@@ -92,12 +106,32 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
                     child: Padding(
                       padding: const EdgeInsets.all(MinimapOverlay._mapInset),
                       child: RepaintBoundary(
-                        child: CustomPaint(
-                          painter: _MinimapPainter(
-                            map: map,
-                            mapImage: _mapImage,
-                            player: player,
-                            entities: entities,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) {
+                            final tile = _tileAtLocalPosition(
+                              details.localPosition,
+                              Size.square(
+                                MinimapOverlay._panelWidth -
+                                    12 -
+                                    8 -
+                                    (MinimapOverlay._mapInset * 2),
+                              ),
+                              map,
+                              player,
+                            );
+                            if (tile != null) {
+                              widget.onTileSelected(tile);
+                            }
+                          },
+                          child: CustomPaint(
+                            painter: _MinimapPainter(
+                              map: map,
+                              mapImage: _mapImage,
+                              player: player,
+                              entities: entities,
+                              selectedTile: widget.selectedTile,
+                            ),
                           ),
                         ),
                       ),
@@ -116,18 +150,20 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
     _mapImageSource = map;
     final token = Object();
     _mapBuildToken = token;
-    Future<void>(() async {
-      final image = await _buildMapImage(map);
-      if (!mounted || !identical(_mapBuildToken, token)) {
-        image.dispose();
-        return;
-      }
-      final previous = _mapImage;
-      setState(() {
-        _mapImage = image;
-      });
-      previous?.dispose();
+    _buildAndStoreMapImage(map, token);
+  }
+
+  Future<void> _buildAndStoreMapImage(TileMap map, Object token) async {
+    final image = await _buildMapImage(map);
+    if (!mounted || !identical(_mapBuildToken, token)) {
+      image.dispose();
+      return;
+    }
+    final previous = _mapImage;
+    setState(() {
+      _mapImage = image;
     });
+    previous?.dispose();
   }
 
   Future<ui.Image> _buildMapImage(TileMap map) async {
@@ -156,6 +192,27 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
     _mapImageSource = null;
     _mapBuildToken = null;
   }
+
+  math.Point<int>? _tileAtLocalPosition(
+    Offset localPosition,
+    Size size,
+    TileMap map,
+    PlayerState player,
+  ) {
+    final viewport = _MinimapPainter.viewportRectFor(
+      map: map,
+      player: player,
+      destinationRect: Offset.zero & size,
+    );
+    final x = viewport.left + (localPosition.dx / size.width) * viewport.width;
+    final y = viewport.top + (localPosition.dy / size.height) * viewport.height;
+    final col = x.floor();
+    final row = y.floor();
+    if (col < 0 || row < 0 || col >= map.width || row >= map.height) {
+      return null;
+    }
+    return math.Point(col, row);
+  }
 }
 
 class _MinimapPainter extends CustomPainter {
@@ -164,21 +221,28 @@ class _MinimapPainter extends CustomPainter {
     required this.mapImage,
     required this.player,
     required this.entities,
+    required this.selectedTile,
   });
 
   final TileMap map;
   final ui.Image? mapImage;
   final PlayerState player;
   final List<WorldEntity> entities;
+  final math.Point<int>? selectedTile;
   static const double _zoomFactor = 2.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final contentRect = Offset.zero & size;
     canvas.drawRect(contentRect, Paint()..color = const Color(0xFF10241D));
-    final viewport = _viewportRect(contentRect);
+    final viewport = viewportRectFor(
+      map: map,
+      player: player,
+      destinationRect: contentRect,
+    );
     _drawMapImage(canvas, contentRect, viewport);
     _drawEntities(canvas, contentRect, viewport);
+    _drawSelectedTile(canvas, contentRect, viewport);
     _drawPlayer(canvas, contentRect, viewport);
     canvas.drawRect(
       contentRect.deflate(1),
@@ -189,7 +253,11 @@ class _MinimapPainter extends CustomPainter {
     );
   }
 
-  Rect _viewportRect(Rect destinationRect) {
+  static Rect viewportRectFor({
+    required TileMap map,
+    required PlayerState player,
+    required Rect destinationRect,
+  }) {
     final visibleWidth = map.width / _zoomFactor;
     final visibleHeight = map.height / _zoomFactor;
     final destinationAspectRatio =
@@ -285,11 +353,44 @@ class _MinimapPainter extends CustomPainter {
     );
   }
 
+  void _drawSelectedTile(Canvas canvas, Rect rect, Rect viewport) {
+    final selected = selectedTile;
+    if (selected == null) {
+      return;
+    }
+    final targetCenter = Offset(selected.x + 0.5, selected.y + 0.5);
+    if (!viewport.inflate(1).contains(targetCenter)) {
+      return;
+    }
+
+    final tileWidth = rect.width / viewport.width;
+    final tileHeight = rect.height / viewport.height;
+    final position = Offset(
+      rect.left + (targetCenter.dx - viewport.left) * tileWidth,
+      rect.top + (targetCenter.dy - viewport.top) * tileHeight,
+    );
+
+    canvas.drawCircle(
+      position,
+      math.max(2.2, math.min(tileWidth, tileHeight) * 0.42),
+      Paint()..color = const Color(0xFFE24A44),
+    );
+    canvas.drawCircle(
+      position,
+      math.max(3.6, math.min(tileWidth, tileHeight) * 0.68),
+      Paint()
+        ..color = const Color(0xAA4C100C)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+  }
+
   @override
   bool shouldRepaint(covariant _MinimapPainter oldDelegate) {
     return oldDelegate.map != map ||
         oldDelegate.mapImage != mapImage ||
         oldDelegate.player != player ||
-        oldDelegate.entities != entities;
+        oldDelegate.entities != entities ||
+        oldDelegate.selectedTile != selectedTile;
   }
 }

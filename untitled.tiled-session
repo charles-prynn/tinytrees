@@ -1,0 +1,39 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "tile_map.tsx",
+    "expandedProjectPaths": [
+    ],
+    "fileStates": {
+        "tile_map.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "tilemap.tmx": {
+            "scale": 0.2074,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 1058.341369334619,
+                "y": 667.7917068466729
+            }
+        },
+        "tilemap.tmx#tile_map": {
+            "scaleInDock": 1
+        }
+    },
+    "last.exportedFilePath": "/Users/charlesprynn/Desktop",
+    "map.height": 128,
+    "map.lastUsedExportFilter": "All Files (*)",
+    "map.width": 128,
+    "openFiles": [
+        "tilemap.tmx",
+        "tile_map.tsx"
+    ],
+    "project": "",
+    "recentFiles": [
+        "tilemap.tmx",
+        "tile_map.tsx"
+    ]
+}

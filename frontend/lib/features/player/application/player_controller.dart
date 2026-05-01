@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_error.dart';
@@ -12,11 +10,9 @@ final playerControllerProvider =
 
 class PlayerController extends AsyncNotifier<PlayerState> {
   int _moveSequence = 0;
-  bool _refreshInFlight = false;
 
   @override
   Future<PlayerState> build() async {
-    final repository = ref.watch(playerRepositoryProvider);
     final socket = ref.watch(gameSocketProvider);
     final subscription = socket.messagesOfType('player.updated').listen((data) {
       final player = data['player'];
@@ -24,21 +20,7 @@ class PlayerController extends AsyncNotifier<PlayerState> {
         state = AsyncData(PlayerState.fromJson(player));
       }
     });
-    final timer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (_refreshInFlight) {
-        return;
-      }
-      _refreshInFlight = true;
-      try {
-        state = AsyncData(await repository.fetch());
-      } catch (_) {
-        // Keep the previous state if the background refresh fails.
-      } finally {
-        _refreshInFlight = false;
-      }
-    });
     ref.onDispose(subscription.cancel);
-    ref.onDispose(timer.cancel);
     return ref.watch(playerStateProvider.future);
   }
 

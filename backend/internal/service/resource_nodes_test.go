@@ -6,15 +6,16 @@ import (
 	"time"
 
 	"starter/backend/internal/domain"
+	storepkg "starter/backend/internal/store"
 
 	"github.com/google/uuid"
 )
 
 func TestEnsureResourceNodesPlacesTreesInsideAssignedForests(t *testing.T) {
 	userID := uuid.New()
-	store := &memoryEntities{}
+	entityStore := &memoryEntities{}
 
-	entities, err := ensureResourceNodes(context.Background(), store, userID, time.Now().UTC())
+	entities, err := ensureResourceNodes(context.Background(), entityStore, userID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ensureResourceNodes returned error: %v", err)
 	}
@@ -24,13 +25,14 @@ func TestEnsureResourceNodesPlacesTreesInsideAssignedForests(t *testing.T) {
 
 	counts := map[string]int{}
 	expectedCounts := scaledTreeTargetCounts(resourceNodeTargetCount)
+	tileMap := storepkg.DefaultTileMap(userID)
 	for _, entity := range entities {
-		forest, ok := treeForestAreas[entity.ResourceKey]
+		clusters, ok := forestClustersForMap(entity.ResourceKey, tileMap.Width, tileMap.Height)
 		if !ok {
-			t.Fatalf("missing forest definition for %q", entity.ResourceKey)
+			t.Fatalf("missing forest clusters for %q", entity.ResourceKey)
 		}
-		if entity.X < forest.MinX || entity.X > forest.MaxX || entity.Y < forest.MinY || entity.Y > forest.MaxY {
-			t.Fatalf("entity %+v spawned outside forest bounds %+v", entity, forest)
+		if !pointInForestClusters(domain.Point{X: entity.X, Y: entity.Y}, clusters) {
+			t.Fatalf("entity %+v spawned outside forest clusters %+v", entity, clusters)
 		}
 		counts[entity.ResourceKey]++
 	}
@@ -44,9 +46,9 @@ func TestEnsureResourceNodesPlacesTreesInsideAssignedForests(t *testing.T) {
 
 func TestEnsureResourceNodesKeepsTreesSpacedApart(t *testing.T) {
 	userID := uuid.New()
-	store := &memoryEntities{}
+	entityStore := &memoryEntities{}
 
-	entities, err := ensureResourceNodes(context.Background(), store, userID, time.Now().UTC())
+	entities, err := ensureResourceNodes(context.Background(), entityStore, userID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ensureResourceNodes returned error: %v", err)
 	}

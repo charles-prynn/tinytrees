@@ -20,6 +20,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   bool _loginOpen = false;
   bool _registrationOpen = false;
   bool _minimapVisible = true;
+  math.Point<int>? _selectedMinimapTile;
   bool _animationDebugOpen = false;
   PlayerCharacterAnimation? _debugAnimationOverride;
   final List<DateTime> _tripleThreePresses = <DateTime>[];
@@ -71,6 +72,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         if (!identical(_lastPlayer, value)) {
           _lastPlayer = value;
           _game.setPlayer(value);
+          _syncSelectedMinimapTile(value);
         }
       });
     });
@@ -156,6 +158,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 registrationOpen: _registrationOpen,
                 minimapVisible: _minimapVisible,
                 showCoordinateDebug: ref.watch(appConfigProvider).debugCord,
+                selectedMinimapTile: _selectedMinimapTile,
+                onMinimapTileSelected: _handleMinimapTileSelected,
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
                 onLoginPressed: _openLogin,
@@ -318,6 +322,40 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
   }
 
+  void _handleMinimapTileSelected(math.Point<int> tile) {
+    if (mounted) {
+      setState(() {
+        _selectedMinimapTile = tile;
+      });
+    }
+    unawaited(_moveToTile(tile));
+  }
+
+  void _syncSelectedMinimapTile(PlayerState player) {
+    final selectedTile = _selectedMinimapTile;
+    if (selectedTile == null || !mounted) {
+      return;
+    }
+
+    final movement = player.movement;
+    final hasReachedSelectedTile =
+        movement == null &&
+        player.x == selectedTile.x &&
+        player.y == selectedTile.y;
+    final destinationChanged =
+        movement != null &&
+        (movement.targetX != selectedTile.x ||
+            movement.targetY != selectedTile.y);
+
+    if (!hasReachedSelectedTile && !destinationChanged) {
+      return;
+    }
+
+    setState(() {
+      _selectedMinimapTile = null;
+    });
+  }
+
   void _setHoldLabel(String? value) {
     if (_holdLabel == value || !mounted) {
       return;
@@ -405,6 +443,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
     if (harvestError != null) {
+      return;
+    }
+  }
+
+  Future<void> _moveToTile(math.Point<int> tile) async {
+    _interactionSequence++;
+    _game.showWalkIconAt(tile);
+    final moved = await ref
+        .read(playerControllerProvider.notifier)
+        .moveTo(x: tile.x, y: tile.y);
+    if (!mounted || !moved) {
       return;
     }
   }

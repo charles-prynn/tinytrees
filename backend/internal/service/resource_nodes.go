@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"starter/backend/internal/domain"
-	"starter/backend/internal/store"
+	storepkg "starter/backend/internal/store"
 
 	"github.com/google/uuid"
 )
@@ -29,11 +29,18 @@ type treeDefinition struct {
 	HarvestDuration time.Duration
 }
 
-type forestArea struct {
-	MinX int
-	MaxX int
-	MinY int
-	MaxY int
+type forestCluster struct {
+	CenterX int
+	CenterY int
+	RadiusX int
+	RadiusY int
+}
+
+type forestClusterSeed struct {
+	CenterXRatio float64
+	CenterYRatio float64
+	RadiusXRatio float64
+	RadiusYRatio float64
 }
 
 var (
@@ -55,13 +62,44 @@ var (
 		"magic_tree":  1,
 	}
 
-	treeForestAreas = map[string]forestArea{
-		"tree":        {MinX: 2, MaxX: 25, MinY: 2, MaxY: 13},
-		"oak_tree":    {MinX: 29, MaxX: 43, MinY: 2, MaxY: 13},
-		"willow_tree": {MinX: 47, MaxX: 61, MinY: 2, MaxY: 13},
-		"maple_tree":  {MinX: 2, MaxX: 18, MinY: 18, MaxY: 29},
-		"yew_tree":    {MinX: 23, MaxX: 39, MinY: 18, MaxY: 29},
-		"magic_tree":  {MinX: 44, MaxX: 60, MinY: 18, MaxY: 29},
+	treeForestClusterSeeds = map[string][]forestClusterSeed{
+		"tree": {
+			{CenterXRatio: 0.12, CenterYRatio: 0.14, RadiusXRatio: 0.12, RadiusYRatio: 0.10},
+			{CenterXRatio: 0.26, CenterYRatio: 0.36, RadiusXRatio: 0.13, RadiusYRatio: 0.11},
+			{CenterXRatio: 0.44, CenterYRatio: 0.18, RadiusXRatio: 0.12, RadiusYRatio: 0.10},
+			{CenterXRatio: 0.63, CenterYRatio: 0.52, RadiusXRatio: 0.12, RadiusYRatio: 0.10},
+			{CenterXRatio: 0.80, CenterYRatio: 0.28, RadiusXRatio: 0.11, RadiusYRatio: 0.09},
+		},
+		"oak_tree": {
+			{CenterXRatio: 0.22, CenterYRatio: 0.16, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.48, CenterYRatio: 0.58, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.74, CenterYRatio: 0.22, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.86, CenterYRatio: 0.70, RadiusXRatio: 0.09, RadiusYRatio: 0.07},
+		},
+		"willow_tree": {
+			{CenterXRatio: 0.36, CenterYRatio: 0.76, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.62, CenterYRatio: 0.14, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.82, CenterYRatio: 0.56, RadiusXRatio: 0.10, RadiusYRatio: 0.08},
+			{CenterXRatio: 0.16, CenterYRatio: 0.66, RadiusXRatio: 0.09, RadiusYRatio: 0.07},
+		},
+		"maple_tree": {
+			{CenterXRatio: 0.10, CenterYRatio: 0.78, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.30, CenterYRatio: 0.56, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.54, CenterYRatio: 0.30, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.72, CenterYRatio: 0.82, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+		},
+		"yew_tree": {
+			{CenterXRatio: 0.22, CenterYRatio: 0.84, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.52, CenterYRatio: 0.44, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.76, CenterYRatio: 0.22, RadiusXRatio: 0.08, RadiusYRatio: 0.07},
+			{CenterXRatio: 0.88, CenterYRatio: 0.86, RadiusXRatio: 0.07, RadiusYRatio: 0.06},
+		},
+		"magic_tree": {
+			{CenterXRatio: 0.14, CenterYRatio: 0.26, RadiusXRatio: 0.07, RadiusYRatio: 0.06},
+			{CenterXRatio: 0.40, CenterYRatio: 0.90, RadiusXRatio: 0.07, RadiusYRatio: 0.06},
+			{CenterXRatio: 0.68, CenterYRatio: 0.68, RadiusXRatio: 0.07, RadiusYRatio: 0.06},
+			{CenterXRatio: 0.92, CenterYRatio: 0.38, RadiusXRatio: 0.07, RadiusYRatio: 0.06},
+		},
 	}
 	treeDefinitionByKey = map[string]treeDefinition{}
 )
@@ -72,7 +110,8 @@ func init() {
 	}
 }
 
-func ensureResourceNodes(ctx context.Context, entityStore store.EntityStore, userID uuid.UUID, now time.Time) ([]domain.Entity, error) {
+func ensureResourceNodes(ctx context.Context, entityStore storepkg.EntityStore, userID uuid.UUID, now time.Time) ([]domain.Entity, error) {
+	tileMap := storepkg.DefaultTileMap(userID)
 	entities, err := entityStore.ListEntities(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -93,7 +132,7 @@ func ensureResourceNodes(ctx context.Context, entityStore store.EntityStore, use
 
 	missing := missingTreeTypes(filtered)
 	for _, resourceKey := range missing {
-		entity, ok := spawnResourceEntity(userID, filtered, resourceKey)
+		entity, ok := spawnResourceEntity(userID, filtered, resourceKey, tileMap.Width, tileMap.Height)
 		if !ok {
 			break
 		}
@@ -111,7 +150,7 @@ func ensureResourceNodes(ctx context.Context, entityStore store.EntityStore, use
 	return filtered, nil
 }
 
-func depleteResourceNode(ctx context.Context, entityStore store.EntityStore, entity domain.Entity, now time.Time) (domain.Entity, error) {
+func depleteResourceNode(ctx context.Context, entityStore storepkg.EntityStore, entity domain.Entity, now time.Time) (domain.Entity, error) {
 	if entity.Metadata == nil {
 		entity.Metadata = map[string]any{}
 	}
@@ -229,12 +268,12 @@ func scaledTreeTargetCounts(total int) map[string]int {
 	return counts
 }
 
-func spawnResourceEntity(userID uuid.UUID, entities []domain.Entity, resourceKey string) (domain.Entity, bool) {
+func spawnResourceEntity(userID uuid.UUID, entities []domain.Entity, resourceKey string, mapWidth int, mapHeight int) (domain.Entity, bool) {
 	definition, ok := treeDefinitionByKey[resourceKey]
 	if !ok {
 		definition = treeDefinitions[0]
 	}
-	forest, ok := treeForestAreas[definition.Key]
+	clusters, ok := forestClustersForMap(definition.Key, mapWidth, mapHeight)
 	if !ok {
 		return domain.Entity{}, false
 	}
@@ -244,7 +283,7 @@ func spawnResourceEntity(userID uuid.UUID, entities []domain.Entity, resourceKey
 		occupied = append(occupied, domain.Point{X: entity.X, Y: entity.Y})
 	}
 
-	candidates := forestCandidates(forest, minForestTreeGapTiles)
+	candidates := forestCandidates(clusters, minForestTreeGapTiles, mapWidth, mapHeight)
 	shufflePoints(candidates)
 	for _, slot := range candidates {
 		if !canPlaceForestTree(slot, occupied, minForestTreeGapTiles) {
@@ -291,21 +330,86 @@ func randomIndex(length int) int {
 	return int(randomUnitFloat() * float64(length))
 }
 
-func forestCandidates(forest forestArea, minGap int) []domain.Point {
+func forestCandidates(clusters []forestCluster, minGap int, mapWidth int, mapHeight int) []domain.Point {
 	step := minGap
 	if step <= 0 {
 		step = 1
 	}
 
-	width := (forest.MaxX-forest.MinX)/step + 1
-	height := (forest.MaxY-forest.MinY)/step + 1
-	candidates := make([]domain.Point, 0, width*height)
-	for y := forest.MinY; y <= forest.MaxY; y += step {
-		for x := forest.MinX; x <= forest.MaxX; x += step {
-			candidates = append(candidates, domain.Point{X: x, Y: y})
+	if len(clusters) == 0 {
+		return nil
+	}
+
+	seen := map[domain.Point]struct{}{}
+	candidates := make([]domain.Point, 0)
+	for _, cluster := range clusters {
+		minY := maxInt(0, cluster.CenterY-cluster.RadiusY)
+		maxY := minInt(mapHeight-1, cluster.CenterY+cluster.RadiusY)
+		minX := maxInt(0, cluster.CenterX-cluster.RadiusX)
+		maxX := minInt(mapWidth-1, cluster.CenterX+cluster.RadiusX)
+
+		for y := minY; y <= maxY; y += step {
+			rowOffset := ((y - minY) / step) % 2
+			xOffset := rowOffset * maxInt(1, step/2)
+			for x := minX + xOffset; x <= maxX; x += step {
+				point := domain.Point{X: x, Y: y}
+				if !pointInForestClusters(point, clusters) {
+					continue
+				}
+				if _, ok := seen[point]; ok {
+					continue
+				}
+				seen[point] = struct{}{}
+				candidates = append(candidates, point)
+			}
 		}
 	}
 	return candidates
+}
+
+func forestClustersForMap(resourceKey string, mapWidth int, mapHeight int) ([]forestCluster, bool) {
+	seeds, ok := treeForestClusterSeeds[resourceKey]
+	if !ok {
+		return nil, false
+	}
+	if mapWidth <= 0 {
+		mapWidth = domain.DefaultTileMapWidth
+	}
+	if mapHeight <= 0 {
+		mapHeight = domain.DefaultTileMapHeight
+	}
+
+	clusters := make([]forestCluster, 0, len(seeds))
+	maxX := maxInt(0, mapWidth-1)
+	maxY := maxInt(0, mapHeight-1)
+	for _, seed := range seeds {
+		cluster := forestCluster{
+			CenterX: clampInt(int(seed.CenterXRatio*float64(maxX)), 0, maxX),
+			CenterY: clampInt(int(seed.CenterYRatio*float64(maxY)), 0, maxY),
+			RadiusX: maxInt(minForestTreeGapTiles, int(seed.RadiusXRatio*float64(mapWidth))),
+			RadiusY: maxInt(minForestTreeGapTiles, int(seed.RadiusYRatio*float64(mapHeight))),
+		}
+		clusters = append(clusters, cluster)
+	}
+	return clusters, true
+}
+
+func pointInForestClusters(point domain.Point, clusters []forestCluster) bool {
+	for _, cluster := range clusters {
+		if pointInForestCluster(point, cluster) {
+			return true
+		}
+	}
+	return false
+}
+
+func pointInForestCluster(point domain.Point, cluster forestCluster) bool {
+	if cluster.RadiusX <= 0 || cluster.RadiusY <= 0 {
+		return false
+	}
+	dx := float64(point.X-cluster.CenterX) / float64(cluster.RadiusX)
+	dy := float64(point.Y-cluster.CenterY) / float64(cluster.RadiusY)
+	return dx*dx+dy*dy <= 1
 }
 
 func shufflePoints(points []domain.Point) {
@@ -334,6 +438,30 @@ func hasMinimumGap(a domain.Point, b domain.Point, minGap int) bool {
 func absInt(value int) int {
 	if value < 0 {
 		return -value
+	}
+	return value
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
 	}
 	return value
 }

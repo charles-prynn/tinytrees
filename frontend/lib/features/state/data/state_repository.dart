@@ -40,7 +40,10 @@ class StateRepository {
       );
       await _cache.writeString(_cacheKey, jsonEncode(snapshot.toSyncJson()));
       return snapshot;
-    } catch (_) {
+    } catch (error) {
+      if (!_shouldUseCachedSnapshot(error)) {
+        rethrow;
+      }
       final cached = await _cache.readString(_cacheKey);
       if (cached != null) {
         return StateSnapshot.fromJson(
@@ -62,5 +65,30 @@ class StateRepository {
     );
     await _cache.writeString(_cacheKey, jsonEncode(next.toSyncJson()));
     return next;
+  }
+
+  bool _shouldUseCachedSnapshot(Object error) {
+    if (error is! DioException) {
+      return false;
+    }
+
+    final statusCode = error.response?.statusCode;
+    if (statusCode != null) {
+      return statusCode >= 500;
+    }
+
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return true;
+      case DioExceptionType.badResponse:
+      case DioExceptionType.badCertificate:
+      case DioExceptionType.cancel:
+        return false;
+      case DioExceptionType.unknown:
+        return error.response == null;
+    }
   }
 }
