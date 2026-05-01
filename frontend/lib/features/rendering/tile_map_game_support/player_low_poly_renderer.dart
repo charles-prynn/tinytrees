@@ -6,7 +6,6 @@ const _playerSkinColor = Color(0xFFD7B08A);
 const _playerShirtColor = Color(0xFFB87A4C);
 const _playerPantsColor = Color(0xFF526B45);
 const _playerBootsColor = Color(0xFF40281A);
-const _playerBeltColor = Color(0xFF5F3B27);
 const _playerAxeWoodColor = Color(0xFF8D6239);
 const _playerAxeMetalColor = Color(0xFFC8D3D9);
 final _playerModelViewDirection =
@@ -21,6 +20,65 @@ final _playerModelViewUp =
     _playerModelViewDirection.cross(_playerModelViewRight).normalized();
 final _playerModelLightDirection =
     const _PlayerModelVector3(-0.35, 0.92, 0.28).normalized();
+const _playerLowPolyUnitScale = 0.66;
+const _playerHeadBodyRollResponse = 0.25;
+const _playerLeftLegStanceRoll = -0.05;
+const _playerRightLegStanceRoll = 0.05;
+const _playerDefaultShadowHeightTiles = 0.2;
+const _playerLowPolyModel = _PlayerModelSpec(
+  torso: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, 1.74, 0),
+    size: _PlayerModelVector3(0.92, 1.16, 0.58),
+    color: _playerShirtColor,
+  ),
+  hips: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, 1.09, 0),
+    size: _PlayerModelVector3(0.88, 0.18, 0.62),
+    color: _playerPantsColor,
+  ),
+  head: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, 0.36, 0),
+    size: _PlayerModelVector3(0.72, 0.72, 0.72),
+    color: _playerSkinColor,
+  ),
+  arm: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, -0.46, 0),
+    size: _PlayerModelVector3(0.26, 0.92, 0.26),
+    color: _playerShirtColor,
+  ),
+  leg: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, -0.51, 0),
+    size: _PlayerModelVector3(0.34, 1.02, 0.36),
+    color: _playerPantsColor,
+  ),
+  boot: _PlayerBoxSpec(
+    center: _PlayerModelVector3(0, -0.11, 0),
+    size: _PlayerModelVector3(0.38, 0.22, 0.48),
+    color: _playerBootsColor,
+  ),
+  headAnchor: _PlayerModelVector3(0, 2.32, 0.02),
+  leftShoulderAnchor: _PlayerModelVector3(-0.58, 2.18, 0),
+  rightShoulderAnchor: _PlayerModelVector3(0.58, 2.18, 0),
+  leftHipAnchor: _PlayerModelVector3(-0.22, 1.04, 0),
+  rightHipAnchor: _PlayerModelVector3(0.22, 1.04, 0),
+  axe: _PlayerToolMountSpec(
+    gripTransform: _PlayerModelTransform(
+      translation: _PlayerModelVector3(0.11, -0.84, 0),
+      pitch: 0.98,
+      roll: -1.37,
+    ),
+    handle: _PlayerBoxSpec(
+      center: _PlayerModelVector3(0.10, 0.55, 0),
+      size: _PlayerModelVector3(0.12, 1.30, 0.12),
+      color: _playerAxeWoodColor,
+    ),
+    head: _PlayerBoxSpec(
+      center: _PlayerModelVector3(0.21, 1.18, 0),
+      size: _PlayerModelVector3(0.42, 0.40, 0.24),
+      color: _playerAxeMetalColor,
+    ),
+  ),
+);
 
 void _drawLowPolyPlayer({
   required Canvas canvas,
@@ -30,182 +88,117 @@ void _drawLowPolyPlayer({
   required double elapsedSeconds,
   required PlayerCharacterAnimation animation,
 }) {
-  final unit = drawTileSize * 0.44;
+  final unit = drawTileSize * _playerLowPolyUnitScale;
   final footX = offset.dx + (pose.position.dx + 0.5) * drawTileSize;
   final footY = offset.dy + (pose.position.dy + 1) * drawTileSize;
-  final rig = _buildPlayerRig(
-    rootYaw: pose.modelYaw,
+  final model = _playerLowPolyModel;
+  final animationPose = _buildPlayerAnimationPose(
     elapsedSeconds: elapsedSeconds,
     animation: animation,
+  );
+  final rig = _buildPlayerRigPose(
+    rootYaw: pose.modelYaw,
+    animationPose: animationPose,
   );
 
   final shadowPaint =
       Paint()
-        ..color = _playerShadowColor.withValues(alpha: rig.shadowOpacity)
+        ..color = _playerShadowColor.withValues(alpha: rig.shadow.opacity)
         ..style = PaintingStyle.fill;
   canvas.drawOval(
     Rect.fromCenter(
       center: Offset(footX, footY - drawTileSize * 0.05),
-      width: drawTileSize * rig.shadowWidthTiles,
-      height: drawTileSize * rig.shadowHeightTiles,
+      width: drawTileSize * rig.shadow.widthTiles,
+      height: drawTileSize * rig.shadow.heightTiles,
     ),
     shadowPaint,
   );
 
   final faces = <_PlayerProjectedFace>[];
-  final rootTransform = _PlayerModelTransform(
-    translation: _PlayerModelVector3(0, rig.bodyLift, 0),
-    pitch: rig.bodyPitch,
-    yaw: rig.rootYaw + rig.bodyYaw,
-    roll: rig.bodyRoll,
-  );
-
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.18, 1.02, -0.26),
-    max: const _PlayerModelVector3(0.18, 1.28, 0.26),
-    color: _playerBeltColor,
-    transforms: [rootTransform],
+    box: model.torso,
+    transforms: [rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.46, 1.16, -0.29),
-    max: const _PlayerModelVector3(0.46, 2.32, 0.29),
-    color: _playerShirtColor,
-    transforms: [rootTransform],
+    box: model.hips,
+    transforms: [rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.44, 1.0, -0.31),
-    max: const _PlayerModelVector3(0.44, 1.18, 0.31),
-    color: _playerPantsColor,
-    transforms: [rootTransform],
-    footX: footX,
-    footY: footY,
-    unit: unit,
-  );
-
-  final headTransform = _PlayerModelTransform(
-    translation: const _PlayerModelVector3(0, 2.32, 0.02),
-    pitch: rig.headPitch,
-    roll: -rig.bodyRoll * 0.25,
-  );
-  _appendCuboidFaces(
-    faces,
-    min: const _PlayerModelVector3(-0.36, 0, -0.36),
-    max: const _PlayerModelVector3(0.36, 0.72, 0.36),
-    color: _playerSkinColor,
-    transforms: [headTransform, rootTransform],
-    footX: footX,
-    footY: footY,
-    unit: unit,
-  );
-
-  final leftLegTransform = _PlayerModelTransform(
-    translation: const _PlayerModelVector3(-0.22, 1.04, 0),
-    pitch: rig.leftLegPitch,
-    roll: -0.05,
-  );
-  final rightLegTransform = _PlayerModelTransform(
-    translation: const _PlayerModelVector3(0.22, 1.04, 0),
-    pitch: rig.rightLegPitch,
-    roll: 0.05,
-  );
-  _appendCuboidFaces(
-    faces,
-    min: const _PlayerModelVector3(-0.17, -1.02, -0.18),
-    max: const _PlayerModelVector3(0.17, 0, 0.18),
-    color: _playerPantsColor,
-    transforms: [leftLegTransform, rootTransform],
+    box: model.head,
+    transforms: [rig.head, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.17, -1.02, -0.18),
-    max: const _PlayerModelVector3(0.17, 0, 0.18),
-    color: _playerPantsColor,
-    transforms: [rightLegTransform, rootTransform],
+    box: model.leg,
+    transforms: [rig.leftLeg, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.19, -0.22, -0.24),
-    max: const _PlayerModelVector3(0.19, 0, 0.24),
-    color: _playerBootsColor,
-    transforms: [leftLegTransform, rootTransform],
+    box: model.leg,
+    transforms: [rig.rightLeg, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.19, -0.22, -0.24),
-    max: const _PlayerModelVector3(0.19, 0, 0.24),
-    color: _playerBootsColor,
-    transforms: [rightLegTransform, rootTransform],
-    footX: footX,
-    footY: footY,
-    unit: unit,
-  );
-
-  final leftArmTransform = _PlayerModelTransform(
-    translation: const _PlayerModelVector3(-0.58, 2.18, 0),
-    pitch: rig.leftArmPitch,
-    yaw: rig.leftArmYaw,
-    roll: rig.leftArmRoll,
-  );
-  final rightArmTransform = _PlayerModelTransform(
-    translation: const _PlayerModelVector3(0.58, 2.18, 0),
-    pitch: rig.rightArmPitch,
-    yaw: rig.rightArmYaw,
-    roll: rig.rightArmRoll,
-  );
-  _appendCuboidFaces(
-    faces,
-    min: const _PlayerModelVector3(-0.13, -0.92, -0.13),
-    max: const _PlayerModelVector3(0.13, 0, 0.13),
-    color: _playerShirtColor,
-    transforms: [leftArmTransform, rootTransform],
+    box: model.boot,
+    transforms: [rig.leftLeg, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.13, -0.92, -0.13),
-    max: const _PlayerModelVector3(0.13, 0, 0.13),
-    color: _playerShirtColor,
-    transforms: [rightArmTransform, rootTransform],
+    box: model.boot,
+    transforms: [rig.rightLeg, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(0.03, -1.44, -0.06),
-    max: const _PlayerModelVector3(0.15, -0.10, 0.06),
-    color: _playerAxeWoodColor,
-    transforms: [rightArmTransform, rootTransform],
+    box: model.arm,
+    transforms: [rig.leftArm, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
   _appendCuboidFaces(
     faces,
-    min: const _PlayerModelVector3(-0.06, -1.42, -0.12),
-    max: const _PlayerModelVector3(0.36, -1.02, 0.12),
-    color: _playerAxeMetalColor,
-    transforms: [rightArmTransform, rootTransform],
+    box: model.arm,
+    transforms: [rig.rightArm, rig.root],
+    footX: footX,
+    footY: footY,
+    unit: unit,
+  );
+  _appendCuboidFaces(
+    faces,
+    box: model.axe.handle,
+    transforms: [model.axe.gripTransform, rig.rightArm, rig.root],
+    footX: footX,
+    footY: footY,
+    unit: unit,
+  );
+  _appendCuboidFaces(
+    faces,
+    box: model.axe.head,
+    transforms: [model.axe.gripTransform, rig.rightArm, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
@@ -226,8 +219,7 @@ void _drawLowPolyPlayer({
   }
 }
 
-_PlayerRig _buildPlayerRig({
-  required double rootYaw,
+_PlayerAnimationPose _buildPlayerAnimationPose({
   required double elapsedSeconds,
   required PlayerCharacterAnimation animation,
 }) {
@@ -245,29 +237,38 @@ _PlayerRig _buildPlayerRig({
           : 0.0;
 
   var bodyLift = 0.05 + idlePulse * 0.03 + walkBounce * 0.12;
-  var bodyPitch = 0.03 + walkBounce * 0.06;
-  var bodyYaw = walkSwing * 0.06;
-  var bodyRoll = walkSwing * 0.05;
-  var headPitch = -idlePulse * 0.03 - walkBounce * 0.04;
-  var leftArmPitch = walkSwing * 0.75 - 0.08;
-  var rightArmPitch = -walkSwing * 0.75 - 0.12;
-  var leftArmYaw = 0.0;
-  var rightArmYaw = 0.0;
-  var leftArmRoll = -0.10 - walkSwing * 0.06;
-  var rightArmRoll = 0.10 + walkSwing * 0.06;
-  var leftLegPitch = -walkSwing * 0.88;
-  var rightLegPitch = walkSwing * 0.88;
-  var shadowOpacity = 0.18 + walkBounce * 0.04;
-  var shadowWidthTiles = 0.88 - walkBounce * 0.05;
-  const shadowHeightTiles = 0.2;
+  var body = _PlayerJointPose(
+    pitch: 0.03 + walkBounce * 0.06,
+    yaw: walkSwing * 0.06,
+    roll: walkSwing * 0.05,
+  );
+  var head = _PlayerJointPose(pitch: -idlePulse * 0.03 - walkBounce * 0.04);
+  var leftArm = _PlayerJointPose(
+    pitch: walkSwing * 0.75 - 0.08,
+    roll: -0.10 - walkSwing * 0.06,
+  );
+  var rightArm = _PlayerJointPose(
+    pitch: -0.88 - walkSwing * 0.22,
+    roll: 0.42 + walkSwing * 0.05,
+  );
+  var leftLeg = _PlayerJointPose(pitch: -walkSwing * 0.88);
+  var rightLeg = _PlayerJointPose(pitch: walkSwing * 0.88);
+  var shadow = _PlayerShadowSpec(
+    opacity: 0.18 + walkBounce * 0.04,
+    widthTiles: 0.88 - walkBounce * 0.05,
+    heightTiles: _playerDefaultShadowHeightTiles,
+  );
 
   if (animation == PlayerCharacterAnimation.idle) {
-    leftArmPitch = 0.02 + idlePulse * 0.06;
-    rightArmPitch = -0.22 - idlePulse * 0.08;
-    leftLegPitch = idlePulse * 0.04;
-    rightLegPitch = -idlePulse * 0.04;
-    bodyRoll = idlePulse * 0.03;
-    bodyYaw = idlePulse * 0.025;
+    body = body.copyWith(roll: idlePulse * 0.03, yaw: idlePulse * 0.025);
+    head = head.copyWith(pitch: -idlePulse * 0.03);
+    leftArm = leftArm.copyWith(pitch: 0.02 + idlePulse * 0.06);
+    rightArm = rightArm.copyWith(
+      pitch: -0.96 - idlePulse * 0.04,
+      roll: 0.46 + idlePulse * 0.03,
+    );
+    leftLeg = leftLeg.copyWith(pitch: idlePulse * 0.04);
+    rightLeg = rightLeg.copyWith(pitch: -idlePulse * 0.04);
   }
 
   if (animation == PlayerCharacterAnimation.slash) {
@@ -275,53 +276,101 @@ _PlayerRig _buildPlayerRig({
     final strike =
         slashPhase >= 0.36 ? _easeInOut((slashPhase - 0.36) / 0.64) : 0.0;
     bodyLift += 0.03 + strike * 0.08;
-    bodyPitch += 0.08 + strike * 0.10;
-    bodyYaw += windup * 0.32 - strike * 0.48;
-    bodyRoll += windup * 0.05 - strike * 0.12;
-    headPitch += windup * 0.08 - strike * 0.16;
-    leftArmPitch = 0.16 + windup * 0.22 - strike * 0.42;
-    leftArmYaw = -0.06 - strike * 0.14;
-    leftArmRoll = -0.25 - strike * 0.12;
-    rightArmPitch = -0.45 - windup * 1.35 + strike * 2.15;
-    rightArmYaw = windup * 0.08 - strike * 0.32;
-    rightArmRoll = 0.28 + windup * 0.22 - strike * 0.64;
-    leftLegPitch = 0.08 - strike * 0.18;
-    rightLegPitch = -0.12 + strike * 0.26;
-    shadowOpacity = 0.24;
-    shadowWidthTiles = 0.98;
+    body = body.copyWith(
+      pitch: body.pitch + 0.08 + strike * 0.10,
+      yaw: body.yaw + windup * 0.32 - strike * 0.48,
+      roll: body.roll + windup * 0.05 - strike * 0.12,
+    );
+    head = head.copyWith(pitch: head.pitch + windup * 0.08 - strike * 0.16);
+    leftArm = _PlayerJointPose(
+      pitch: 0.16 + windup * 0.22 - strike * 0.42,
+      yaw: -0.06 - strike * 0.14,
+      roll: -0.25 - strike * 0.12,
+    );
+    rightArm = _PlayerJointPose(
+      pitch: -0.45 - windup * 1.35 + strike * 2.15,
+      yaw: windup * 0.08 - strike * 0.32,
+      roll: 0.28 + windup * 0.22 - strike * 0.64,
+    );
+    leftLeg = leftLeg.copyWith(pitch: 0.08 - strike * 0.18);
+    rightLeg = rightLeg.copyWith(pitch: -0.12 + strike * 0.26);
+    shadow = shadow.copyWith(opacity: 0.24, widthTiles: 0.98);
   }
 
-  return _PlayerRig(
-    rootYaw: rootYaw,
+  return _PlayerAnimationPose(
     bodyLift: bodyLift,
-    bodyPitch: bodyPitch,
-    bodyYaw: bodyYaw,
-    bodyRoll: bodyRoll,
-    headPitch: headPitch,
-    leftArmPitch: leftArmPitch,
-    rightArmPitch: rightArmPitch,
-    leftArmYaw: leftArmYaw,
-    rightArmYaw: rightArmYaw,
-    leftArmRoll: leftArmRoll,
-    rightArmRoll: rightArmRoll,
-    leftLegPitch: leftLegPitch,
-    rightLegPitch: rightLegPitch,
-    shadowOpacity: shadowOpacity.clamp(0.12, 0.32).toDouble(),
-    shadowWidthTiles: shadowWidthTiles.clamp(0.76, 1.02).toDouble(),
-    shadowHeightTiles: shadowHeightTiles,
+    body: body,
+    head: head,
+    leftArm: leftArm,
+    rightArm: rightArm,
+    leftLeg: leftLeg,
+    rightLeg: rightLeg,
+    shadow: _PlayerShadowSpec(
+      opacity: shadow.opacity.clamp(0.12, 0.32).toDouble(),
+      widthTiles: shadow.widthTiles.clamp(0.76, 1.02).toDouble(),
+      heightTiles: shadow.heightTiles,
+    ),
+  );
+}
+
+_PlayerRigPose _buildPlayerRigPose({
+  required double rootYaw,
+  required _PlayerAnimationPose animationPose,
+}) {
+  final model = _playerLowPolyModel;
+  return _PlayerRigPose(
+    root: _PlayerModelTransform(
+      translation: _PlayerModelVector3(0, animationPose.bodyLift, 0),
+      pitch: animationPose.body.pitch,
+      yaw: rootYaw + animationPose.body.yaw,
+      roll: animationPose.body.roll,
+    ),
+    head: _PlayerModelTransform(
+      translation: model.headAnchor,
+      pitch: animationPose.head.pitch,
+      yaw: animationPose.head.yaw,
+      roll:
+          animationPose.head.roll -
+          animationPose.body.roll * _playerHeadBodyRollResponse,
+    ),
+    leftArm: _PlayerModelTransform(
+      translation: model.leftShoulderAnchor,
+      pitch: animationPose.leftArm.pitch,
+      yaw: animationPose.leftArm.yaw,
+      roll: animationPose.leftArm.roll,
+    ),
+    rightArm: _PlayerModelTransform(
+      translation: model.rightShoulderAnchor,
+      pitch: animationPose.rightArm.pitch,
+      yaw: animationPose.rightArm.yaw,
+      roll: animationPose.rightArm.roll,
+    ),
+    leftLeg: _PlayerModelTransform(
+      translation: model.leftHipAnchor,
+      pitch: animationPose.leftLeg.pitch,
+      yaw: animationPose.leftLeg.yaw,
+      roll: animationPose.leftLeg.roll + _playerLeftLegStanceRoll,
+    ),
+    rightLeg: _PlayerModelTransform(
+      translation: model.rightHipAnchor,
+      pitch: animationPose.rightLeg.pitch,
+      yaw: animationPose.rightLeg.yaw,
+      roll: animationPose.rightLeg.roll + _playerRightLegStanceRoll,
+    ),
+    shadow: animationPose.shadow,
   );
 }
 
 void _appendCuboidFaces(
   List<_PlayerProjectedFace> faces, {
-  required _PlayerModelVector3 min,
-  required _PlayerModelVector3 max,
-  required Color color,
+  required _PlayerBoxSpec box,
   required List<_PlayerModelTransform> transforms,
   required double footX,
   required double footY,
   required double unit,
 }) {
+  final min = box.min;
+  final max = box.max;
   final vertices = [
     _PlayerModelVector3(min.x, min.y, min.z),
     _PlayerModelVector3(max.x, min.y, min.z),
@@ -379,7 +428,7 @@ void _appendCuboidFaces(
       _PlayerProjectedFace(
         path: path,
         depth: depth,
-        color: _shadePlayerColor(color, brightness),
+        color: _shadePlayerColor(box.color, brightness),
       ),
     );
   }
@@ -463,44 +512,152 @@ double _easeInOut(double t) {
   return clamped * clamped * (3 - 2 * clamped);
 }
 
-class _PlayerRig {
-  const _PlayerRig({
-    required this.rootYaw,
-    required this.bodyLift,
-    required this.bodyPitch,
-    required this.bodyYaw,
-    required this.bodyRoll,
-    required this.headPitch,
-    required this.leftArmPitch,
-    required this.rightArmPitch,
-    required this.leftArmYaw,
-    required this.rightArmYaw,
-    required this.leftArmRoll,
-    required this.rightArmRoll,
-    required this.leftLegPitch,
-    required this.rightLegPitch,
-    required this.shadowOpacity,
-    required this.shadowWidthTiles,
-    required this.shadowHeightTiles,
+class _PlayerModelSpec {
+  const _PlayerModelSpec({
+    required this.torso,
+    required this.hips,
+    required this.head,
+    required this.arm,
+    required this.leg,
+    required this.boot,
+    required this.headAnchor,
+    required this.leftShoulderAnchor,
+    required this.rightShoulderAnchor,
+    required this.leftHipAnchor,
+    required this.rightHipAnchor,
+    required this.axe,
   });
 
-  final double rootYaw;
+  final _PlayerBoxSpec torso;
+  final _PlayerBoxSpec hips;
+  final _PlayerBoxSpec head;
+  final _PlayerBoxSpec arm;
+  final _PlayerBoxSpec leg;
+  final _PlayerBoxSpec boot;
+  final _PlayerModelVector3 headAnchor;
+  final _PlayerModelVector3 leftShoulderAnchor;
+  final _PlayerModelVector3 rightShoulderAnchor;
+  final _PlayerModelVector3 leftHipAnchor;
+  final _PlayerModelVector3 rightHipAnchor;
+  final _PlayerToolMountSpec axe;
+}
+
+class _PlayerToolMountSpec {
+  const _PlayerToolMountSpec({
+    required this.gripTransform,
+    required this.handle,
+    required this.head,
+  });
+
+  final _PlayerModelTransform gripTransform;
+  final _PlayerBoxSpec handle;
+  final _PlayerBoxSpec head;
+}
+
+class _PlayerBoxSpec {
+  const _PlayerBoxSpec({
+    required this.center,
+    required this.size,
+    required this.color,
+  });
+
+  final _PlayerModelVector3 center;
+  final _PlayerModelVector3 size;
+  final Color color;
+
+  _PlayerModelVector3 get min => _PlayerModelVector3(
+    center.x - size.x * 0.5,
+    center.y - size.y * 0.5,
+    center.z - size.z * 0.5,
+  );
+
+  _PlayerModelVector3 get max => _PlayerModelVector3(
+    center.x + size.x * 0.5,
+    center.y + size.y * 0.5,
+    center.z + size.z * 0.5,
+  );
+}
+
+class _PlayerAnimationPose {
+  const _PlayerAnimationPose({
+    required this.bodyLift,
+    required this.body,
+    required this.head,
+    required this.leftArm,
+    required this.rightArm,
+    required this.leftLeg,
+    required this.rightLeg,
+    required this.shadow,
+  });
+
   final double bodyLift;
-  final double bodyPitch;
-  final double bodyYaw;
-  final double bodyRoll;
-  final double headPitch;
-  final double leftArmPitch;
-  final double rightArmPitch;
-  final double leftArmYaw;
-  final double rightArmYaw;
-  final double leftArmRoll;
-  final double rightArmRoll;
-  final double leftLegPitch;
-  final double rightLegPitch;
-  final double shadowOpacity;
-  final double shadowWidthTiles;
-  final double shadowHeightTiles;
+  final _PlayerJointPose body;
+  final _PlayerJointPose head;
+  final _PlayerJointPose leftArm;
+  final _PlayerJointPose rightArm;
+  final _PlayerJointPose leftLeg;
+  final _PlayerJointPose rightLeg;
+  final _PlayerShadowSpec shadow;
+}
+
+class _PlayerRigPose {
+  const _PlayerRigPose({
+    required this.root,
+    required this.head,
+    required this.leftArm,
+    required this.rightArm,
+    required this.leftLeg,
+    required this.rightLeg,
+    required this.shadow,
+  });
+
+  final _PlayerModelTransform root;
+  final _PlayerModelTransform head;
+  final _PlayerModelTransform leftArm;
+  final _PlayerModelTransform rightArm;
+  final _PlayerModelTransform leftLeg;
+  final _PlayerModelTransform rightLeg;
+  final _PlayerShadowSpec shadow;
+}
+
+class _PlayerJointPose {
+  const _PlayerJointPose({this.pitch = 0, this.yaw = 0, this.roll = 0});
+
+  final double pitch;
+  final double yaw;
+  final double roll;
+
+  _PlayerJointPose copyWith({double? pitch, double? yaw, double? roll}) {
+    return _PlayerJointPose(
+      pitch: pitch ?? this.pitch,
+      yaw: yaw ?? this.yaw,
+      roll: roll ?? this.roll,
+    );
+  }
+}
+
+class _PlayerShadowSpec {
+  const _PlayerShadowSpec({
+    required this.opacity,
+    required this.widthTiles,
+    required this.heightTiles,
+  });
+
+  final double opacity;
+  final double widthTiles;
+  final double heightTiles;
+
+  _PlayerShadowSpec copyWith({
+    double? opacity,
+    double? widthTiles,
+    double? heightTiles,
+  }) {
+    return _PlayerShadowSpec(
+      opacity: opacity ?? this.opacity,
+      widthTiles: widthTiles ?? this.widthTiles,
+      heightTiles: heightTiles ?? this.heightTiles,
+    );
+  }
 }
 
 class _PlayerProjectedFace {
