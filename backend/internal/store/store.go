@@ -14,6 +14,7 @@ type UserStore interface {
 	GetByEmail(ctx context.Context, email string) (domain.User, error)
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.User, error)
+	ListUsers(ctx context.Context) ([]domain.User, error)
 	GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error)
 	UpgradeGuest(ctx context.Context, id uuid.UUID, username string, email *string, passwordHash string, displayName string) (domain.User, error)
 }
@@ -51,7 +52,12 @@ type PlayerStore interface {
 
 type InventoryStore interface {
 	ListInventory(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error)
-	AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) error
+	AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) (int64, error)
+}
+
+type BankStore interface {
+	ListBank(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error)
+	DepositInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) (int64, error)
 }
 
 type SkillStore interface {
@@ -73,6 +79,7 @@ type Stores struct {
 	Entities  EntityStore
 	Players   PlayerStore
 	Inventory InventoryStore
+	Bank      BankStore
 	Skills    SkillStore
 	Actions   ActionStore
 }

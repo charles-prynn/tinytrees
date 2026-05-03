@@ -22,6 +22,7 @@ func TestHealthRouteIsMounted(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	response := httptest.NewRecorder()
@@ -46,6 +47,30 @@ func TestHealthRouteIsMounted(t *testing.T) {
 	}
 	if body.Error != nil {
 		t.Fatalf("expected nil error, got %v", body.Error)
+	}
+}
+
+func TestAdminRoutesRequireSharedSecret(t *testing.T) {
+	router := NewRouter(
+		config.Config{AdminSecret: "topsecret"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/admin/overview", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
 	}
 }
 

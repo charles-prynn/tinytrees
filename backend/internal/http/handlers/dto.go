@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"net/http"
 	"time"
 
 	"starter/backend/internal/domain"
 	"starter/backend/internal/service"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -61,6 +63,31 @@ type harvestRequest struct {
 
 func (r harvestRequest) EntityUUID() (uuid.UUID, error) {
 	return uuid.Parse(r.EntityID)
+}
+
+type bankDepositRequest struct {
+	EntityID string `json:"entity_id"`
+	ItemKey  string `json:"item_key"`
+	Quantity int64  `json:"quantity"`
+}
+
+func (r bankDepositRequest) EntityUUID() (uuid.UUID, error) {
+	return uuid.Parse(r.EntityID)
+}
+
+type adminGrantInventoryRequest struct {
+	ItemKey  string `json:"item_key"`
+	Quantity int64  `json:"quantity"`
+}
+
+type adminGrantXPRequest struct {
+	SkillKey string `json:"skill_key"`
+	XP       int64  `json:"xp"`
+}
+
+type adminSetPlayerPositionRequest struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 type tiledMapDTO struct {
@@ -184,6 +211,49 @@ type playerSkillDTO struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type adminOverviewDTO struct {
+	GeneratedAt time.Time             `json:"generated_at"`
+	Totals      adminTotalsDTO        `json:"totals"`
+	Users       []adminUserSummaryDTO `json:"users"`
+}
+
+type adminTotalsDTO struct {
+	TotalUsers    int `json:"total_users"`
+	GuestUsers    int `json:"guest_users"`
+	LocalUsers    int `json:"local_users"`
+	ActivePlayers int `json:"active_players"`
+	MovingPlayers int `json:"moving_players"`
+	IdlePlayers   int `json:"idle_players"`
+}
+
+type adminUserSummaryDTO struct {
+	User              userDTO   `json:"user"`
+	PlayerX           int       `json:"player_x"`
+	PlayerY           int       `json:"player_y"`
+	Status            string    `json:"status"`
+	WoodcuttingLevel  int       `json:"woodcutting_level"`
+	WoodcuttingXP     int64     `json:"woodcutting_xp"`
+	LastUpdatedAt     time.Time `json:"last_updated_at"`
+	CurrentActionType string    `json:"current_action_type,omitempty"`
+}
+
+type adminUserDetailDTO struct {
+	User   userDTO              `json:"user"`
+	Player playerDTO            `json:"player"`
+	Action *actionDTO           `json:"action,omitempty"`
+	Skills []playerSkillDTO     `json:"skills"`
+	Items  []inventoryItemDTO   `json:"items"`
+	World  adminWorldSummaryDTO `json:"world"`
+}
+
+type adminWorldSummaryDTO struct {
+	TotalEntities      int            `json:"total_entities"`
+	ActiveResources    int            `json:"active_resources"`
+	DepletedResources  int            `json:"depleted_resources"`
+	ResourceCounts     map[string]int `json:"resource_counts"`
+	ResourceStateCount map[string]int `json:"resource_state_count"`
+}
+
 func toUserDTO(user domain.User) userDTO {
 	return userDTO{
 		ID:          user.ID.String(),
@@ -206,6 +276,10 @@ func toTokenDTO(tokens service.AuthTokens) tokenDTO {
 
 func toAuthDTO(result service.AuthResult) authDTO {
 	return authDTO{User: toUserDTO(result.User), Tokens: toTokenDTO(result.Tokens)}
+}
+
+func userIDFromParam(r *http.Request) (uuid.UUID, error) {
+	return uuid.Parse(chi.URLParam(r, "userID"))
 }
 
 func toTiledMapDTO(tileMap domain.TileMap) tiledMapDTO {
@@ -439,12 +513,61 @@ func toInventoryDTOs(items []domain.InventoryItem) []inventoryItemDTO {
 func toPlayerSkillDTOs(skills []domain.PlayerSkill) []playerSkillDTO {
 	result := make([]playerSkillDTO, 0, len(skills))
 	for _, skill := range skills {
-		result = append(result, playerSkillDTO{
-			SkillKey:  skill.SkillKey,
-			XP:        skill.XP,
-			Level:     skill.Level,
-			UpdatedAt: skill.UpdatedAt,
-		})
+		result = append(result, toPlayerSkillDTO(skill))
 	}
 	return result
+}
+
+func toPlayerSkillDTO(skill domain.PlayerSkill) playerSkillDTO {
+	return playerSkillDTO{
+		SkillKey:  skill.SkillKey,
+		XP:        skill.XP,
+		Level:     skill.Level,
+		UpdatedAt: skill.UpdatedAt,
+	}
+}
+
+func toAdminOverviewDTO(overview domain.AdminOverview) adminOverviewDTO {
+	items := make([]adminUserSummaryDTO, 0, len(overview.Users))
+	for _, user := range overview.Users {
+		items = append(items, adminUserSummaryDTO{
+			User:              toUserDTO(user.User),
+			PlayerX:           user.PlayerX,
+			PlayerY:           user.PlayerY,
+			Status:            user.Status,
+			WoodcuttingLevel:  user.WoodcuttingLevel,
+			WoodcuttingXP:     user.WoodcuttingXP,
+			LastUpdatedAt:     user.LastUpdatedAt,
+			CurrentActionType: user.CurrentActionType,
+		})
+	}
+	return adminOverviewDTO{
+		GeneratedAt: overview.GeneratedAt,
+		Totals: adminTotalsDTO{
+			TotalUsers:    overview.Totals.TotalUsers,
+			GuestUsers:    overview.Totals.GuestUsers,
+			LocalUsers:    overview.Totals.LocalUsers,
+			ActivePlayers: overview.Totals.ActivePlayers,
+			MovingPlayers: overview.Totals.MovingPlayers,
+			IdlePlayers:   overview.Totals.IdlePlayers,
+		},
+		Users: items,
+	}
+}
+
+func toAdminUserDetailDTO(detail domain.AdminUserDetail) adminUserDetailDTO {
+	return adminUserDetailDTO{
+		User:   toUserDTO(detail.User),
+		Player: toPlayerDTO(detail.Player),
+		Action: toActionDTO(detail.Action),
+		Skills: toPlayerSkillDTOs(detail.Skills),
+		Items:  toInventoryDTOs(detail.Items),
+		World: adminWorldSummaryDTO{
+			TotalEntities:      detail.World.TotalEntities,
+			ActiveResources:    detail.World.ActiveResources,
+			DepletedResources:  detail.World.DepletedResources,
+			ResourceCounts:     detail.World.ResourceCounts,
+			ResourceStateCount: detail.World.ResourceStateCount,
+		},
+	}
 }

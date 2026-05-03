@@ -35,6 +35,10 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusUnauthorized
 		code = "unauthorized"
 		message = "authentication is required"
+	case errors.Is(err, service.ErrNotFound):
+		status = http.StatusNotFound
+		code = "not_found"
+		message = err.Error()
 	case errors.Is(err, service.ErrUsernameTaken):
 		status = http.StatusConflict
 		code = "conflict"
@@ -52,7 +56,11 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, service.ErrInvalidMoveTarget),
 		errors.Is(err, service.ErrActionInProgress),
 		errors.Is(err, service.ErrInvalidHarvestTarget),
-		errors.Is(err, service.ErrPlayerIsMoving):
+		errors.Is(err, service.ErrPlayerIsMoving),
+		errors.Is(err, service.ErrInvalidBankTarget),
+		errors.Is(err, service.ErrBankTooFar),
+		errors.Is(err, service.ErrInvalidBankDeposit),
+		errors.Is(err, service.ErrInventoryItemUnavailable):
 		status = http.StatusBadRequest
 		code = "validation_error"
 		message = err.Error()

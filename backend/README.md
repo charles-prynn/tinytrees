@@ -12,6 +12,8 @@ make run
 
 The API listens on `:8080` by default.
 
+Set `ADMIN_SECRET` to enable the standalone admin panel endpoints.
+
 ## Docker
 
 From the repository root:
@@ -49,11 +51,27 @@ make migrate-down
 - `GET /v1/actions/current`
 - `POST /v1/actions/harvest`
 - `GET /v1/inventory`
+- `GET /v1/admin/overview`
+- `GET /v1/admin/users/{userID}`
+- `POST /v1/admin/users/{userID}/inventory`
+- `POST /v1/admin/users/{userID}/skills/xp`
+- `POST /v1/admin/users/{userID}/position`
 
 All API responses use a consistent envelope:
 
 ```json
 { "data": {}, "error": null, "request_id": "..." }
+```
+
+## Admin Access
+
+Admin routes are protected by a shared secret sent in the `X-Admin-Secret`
+header. They are intentionally separate from the player auth flow.
+
+Example:
+
+```text
+X-Admin-Secret: <ADMIN_SECRET>
 ```
 
 ## Realtime

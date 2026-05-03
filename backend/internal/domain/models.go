@@ -85,6 +85,7 @@ const (
 	DefaultTileMapWidth    = 64
 	DefaultTileMapHeight   = 32
 	DefaultTileMapTileSize = 32
+	InventorySlotLimit     = int64(1024)
 )
 
 type TileMap struct {

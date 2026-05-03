@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/data/auth_controller.dart';
+import '../../bank/data/bank_repository.dart';
 import '../../entities/data/entity_repository.dart';
 import '../../entities/domain/world_entity.dart';
 import '../../auth/domain/auth_session.dart';
@@ -26,6 +28,7 @@ part 'game_hud_parts/inventory/inventory_grid.dart';
 part 'game_hud_parts/inventory/inventory_grid_loading.dart';
 part 'game_hud_parts/inventory/inventory_grid_error.dart';
 part 'game_hud_parts/inventory/inventory_slot.dart';
+part 'game_hud_parts/bank/bank_drawer.dart';
 part 'game_hud_parts/details/user_top_bar_section.dart';
 part 'game_hud_parts/details/activity_top_bar_section.dart';
 part 'game_hud_parts/details/woodcutting_top_bar_section.dart';
@@ -44,6 +47,7 @@ class GameHud extends ConsumerWidget {
   const GameHud({
     super.key,
     required this.inventoryOpen,
+    required this.bankOpen,
     required this.loginOpen,
     required this.registrationOpen,
     required this.minimapVisible,
@@ -53,6 +57,8 @@ class GameHud extends ConsumerWidget {
     required this.onMinimapTileSelected,
     required this.onInventoryPressed,
     required this.onInventoryClosed,
+    required this.onBankClosed,
+    required this.onBankDeposit,
     required this.onPlayerRenderModeToggle,
     required this.onLoginPressed,
     required this.onLoginClosed,
@@ -61,6 +67,7 @@ class GameHud extends ConsumerWidget {
   });
 
   final bool inventoryOpen;
+  final bool bankOpen;
   final bool loginOpen;
   final bool registrationOpen;
   final bool minimapVisible;
@@ -70,6 +77,8 @@ class GameHud extends ConsumerWidget {
   final ValueChanged<math.Point<int>> onMinimapTileSelected;
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
+  final VoidCallback onBankClosed;
+  final Future<void> Function(InventoryItem item) onBankDeposit;
   final VoidCallback onPlayerRenderModeToggle;
   final VoidCallback onLoginPressed;
   final VoidCallback onLoginClosed;
@@ -79,6 +88,7 @@ class GameHud extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final inventory = ref.watch(inventoryProvider);
+    final bank = ref.watch(bankProvider);
     return Stack(
       children: [
         SafeArea(
@@ -112,7 +122,14 @@ class GameHud extends ConsumerWidget {
             child: Align(
               alignment: Alignment.bottomCenter,
               child:
-                  inventoryOpen
+                  bankOpen
+                      ? BankDrawer(
+                        inventory: inventory,
+                        bank: bank,
+                        onClose: onBankClosed,
+                        onDeposit: onBankDeposit,
+                      )
+                      : inventoryOpen
                       ? InventoryDrawer(
                         inventory: inventory,
                         onClose: onInventoryClosed,

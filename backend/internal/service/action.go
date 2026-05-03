@@ -186,16 +186,17 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
 		if randomUnitFloat() < successChance {
-			if err := s.inventory.AddInventoryItem(ctx, userID, itemKey, rewardQuantity); err != nil {
+			addedQuantity, err := s.inventory.AddInventoryItem(ctx, userID, itemKey, rewardQuantity)
+			if err != nil {
 				return nil, err
 			}
-			rewardsGranted += rewardQuantity
-			if s.skills != nil && skillKey != "" && xpPerReward > 0 {
-				skill, err := s.skills.AddXP(ctx, userID, skillKey, xpPerReward*rewardQuantity)
+			rewardsGranted += addedQuantity
+			if addedQuantity > 0 && s.skills != nil && skillKey != "" && xpPerReward > 0 {
+				skill, err := s.skills.AddXP(ctx, userID, skillKey, xpPerReward*addedQuantity)
 				if err != nil {
 					return nil, err
 				}
-				xpGranted += xpPerReward * rewardQuantity
+				xpGranted += xpPerReward * addedQuantity
 				if currentLevel > 0 && int64(skill.Level) > currentLevel {
 					levelUps += int64(skill.Level) - currentLevel
 				}

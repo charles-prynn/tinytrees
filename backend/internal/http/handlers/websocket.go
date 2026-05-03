@@ -94,14 +94,17 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, write func(wsServerMessage) error) {
 	playerTicker := time.NewTicker(wsPlayerUpdateInterval)
 	inventoryTicker := time.NewTicker(wsInventoryUpdatePeriod)
+	bankTicker := time.NewTicker(wsInventoryUpdatePeriod)
 	entityTicker := time.NewTicker(wsEntityUpdatePeriod)
 	defer playerTicker.Stop()
 	defer inventoryTicker.Stop()
+	defer bankTicker.Stop()
 	defer entityTicker.Stop()
 
 	var lastPlayerJSON []byte
 	var lastActionJSON []byte
 	var lastInventoryJSON []byte
+	var lastBankJSON []byte
 	var lastEntityJSON []byte
 
 	for {
@@ -165,6 +168,22 @@ func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, wri
 					return
 				}
 				lastInventoryJSON = inventoryJSON
+			}
+		case <-bankTicker.C:
+			items, err := h.inventory.ListBank(ctx, userID)
+			if err != nil {
+				continue
+			}
+			bankDTOs := toInventoryDTOs(items)
+			bankJSON, err := json.Marshal(bankDTOs)
+			if err == nil && !jsonEqual(lastBankJSON, bankJSON) {
+				if err := write(wsServerMessage{
+					Type: "bank.updated",
+					Data: map[string]any{"items": bankDTOs},
+				}); err != nil {
+					return
+				}
+				lastBankJSON = bankJSON
 			}
 		}
 	}
@@ -246,6 +265,34 @@ func (h *Handler) handleWebSocketMessage(r *http.Request, userID uuid.UUID, mess
 			ID:   message.ID,
 			Type: "inventory.updated",
 			Data: map[string]any{"items": toInventoryDTOs(items)},
+		}
+	case "bank.get":
+		items, err := h.inventory.ListBank(r.Context(), userID)
+		if err != nil {
+			return wsError(message.ID, "bank.get.error", err)
+		}
+		return wsServerMessage{
+			ID:   message.ID,
+			Type: "bank.updated",
+			Data: map[string]any{"items": toInventoryDTOs(items)},
+		}
+	case "bank.deposit":
+		var body bankDepositRequest
+		if err := decodeWebSocketPayload(message.Payload, &body); err != nil {
+			return wsError(message.ID, "bank.deposit.error", service.ErrValidation)
+		}
+		entityID, err := body.EntityUUID()
+		if err != nil {
+			return wsError(message.ID, "bank.deposit.error", service.ErrValidation)
+		}
+		moved, err := h.inventory.Deposit(r.Context(), userID, entityID, body.ItemKey, body.Quantity)
+		if err != nil {
+			return wsError(message.ID, "bank.deposit.error", err)
+		}
+		return wsServerMessage{
+			ID:   message.ID,
+			Type: "bank.deposited",
+			Data: map[string]any{"moved": moved},
 		}
 	case "entities.get":
 		entities, err := h.entities.List(r.Context(), userID)

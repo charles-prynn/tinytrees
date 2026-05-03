@@ -17,6 +17,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   String? _holdLabel;
   int _interactionSequence = 0;
   bool _inventoryOpen = false;
+  bool _bankOpen = false;
+  String? _activeBankEntityId;
   bool _loginOpen = false;
   bool _registrationOpen = false;
   bool _minimapVisible = true;
@@ -155,6 +157,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
               GameHud(
                 inventoryOpen: _inventoryOpen,
+                bankOpen: _bankOpen,
                 loginOpen: _loginOpen,
                 registrationOpen: _registrationOpen,
                 minimapVisible: _minimapVisible,
@@ -164,6 +167,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 onMinimapTileSelected: _handleMinimapTileSelected,
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
+                onBankClosed: _closeBank,
+                onBankDeposit: _depositBankItem,
                 onPlayerRenderModeToggle: _togglePlayerRenderMode,
                 onLoginPressed: _openLogin,
                 onLoginClosed: _closeLogin,
@@ -320,7 +325,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       details.localPosition,
     );
     if (interactionTarget != null) {
-      await _moveAndHarvest(interactionTarget);
+      await _handleEntityInteraction(interactionTarget);
       return;
     }
 
@@ -331,6 +336,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
 
     _interactionSequence++;
+    _closeBank();
     _game.showWalkIconAt(tile);
     final moved = await ref
         .read(playerControllerProvider.notifier)
@@ -388,7 +394,32 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
     setState(() {
+      if (!_inventoryOpen) {
+        _bankOpen = false;
+        _activeBankEntityId = null;
+      }
       _inventoryOpen = !_inventoryOpen;
+    });
+  }
+
+  void _closeBank() {
+    if (!_bankOpen || !mounted) {
+      return;
+    }
+    setState(() {
+      _bankOpen = false;
+      _activeBankEntityId = null;
+    });
+  }
+
+  void _openBank(String entityId) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _inventoryOpen = false;
+      _bankOpen = true;
+      _activeBankEntityId = entityId;
     });
   }
 
@@ -430,9 +461,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     });
   }
 
-  Future<void> _moveAndHarvest(EntityInteractionTarget target) async {
+  Future<void> _handleEntityInteraction(EntityInteractionTarget target) async {
     final sequence = ++_interactionSequence;
     final controller = ref.read(playerControllerProvider.notifier);
+    if (target.kind != EntityInteractionKind.bank) {
+      _closeBank();
+    }
     final moved = await controller.moveTo(x: target.tile.x, y: target.tile.y);
     if (!mounted || !moved || sequence != _interactionSequence) {
       return;
@@ -450,6 +484,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
 
     _game.facePlayer(target.facing);
+    if (target.kind == EntityInteractionKind.bank) {
+      _openBank(target.entityId);
+      return;
+    }
     final harvestError = await controller.startHarvest(
       entityId: target.entityId,
     );
@@ -467,12 +505,42 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   Future<void> _moveToTile(math.Point<int> tile) async {
     _interactionSequence++;
+    _closeBank();
     _game.showWalkIconAt(tile);
     final moved = await ref
         .read(playerControllerProvider.notifier)
         .moveTo(x: tile.x, y: tile.y);
     if (!mounted || !moved) {
       return;
+    }
+  }
+
+  Future<void> _depositBankItem(InventoryItem item) async {
+    final entityId = _activeBankEntityId;
+    if (entityId == null || item.quantity <= 0) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(bankRepositoryProvider)
+          .deposit(
+            entityId: entityId,
+            itemKey: item.itemKey,
+            quantity: item.quantity,
+          );
+      ref.invalidate(inventoryProvider);
+      ref.invalidate(bankProvider);
+    } catch (error) {
+      final message =
+          error is AppError && error.message.isNotEmpty
+              ? error.message
+              : 'Deposit failed';
+      _game.showEntityMessage(
+        entityId,
+        message,
+        color: const Color(0xFFF0C56D),
+      );
     }
   }
 }

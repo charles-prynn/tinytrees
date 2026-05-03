@@ -100,6 +100,10 @@ func (m *memoryUsers) GetByID(_ context.Context, id uuid.UUID) (domain.User, err
 	return domain.User{}, ErrUnauthorized
 }
 
+func (m *memoryUsers) ListUsers(_ context.Context) ([]domain.User, error) {
+	return append([]domain.User(nil), m.items...), nil
+}
+
 func (m *memoryUsers) GetPasswordHash(_ context.Context, id uuid.UUID) (string, error) {
 	hash, ok := m.passwords[id]
 	if !ok {

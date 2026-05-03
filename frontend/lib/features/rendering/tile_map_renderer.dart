@@ -317,6 +317,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final target = candidates.first;
     return EntityInteractionTarget(
       entityId: entity.id,
+      kind: target.kind,
       tile: target.tile,
       facing: target.facing,
     );
@@ -335,16 +336,20 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   List<EntityInteractionTarget> _interactionCandidates(WorldEntity entity) {
     final bounds = _entityCollisionBounds(entity);
     final candidates = <EntityInteractionTarget>[];
+    final interactionKind =
+        entity.isBank ? EntityInteractionKind.bank : EntityInteractionKind.harvest;
 
     for (var y = bounds.top.toInt(); y < bounds.bottom.toInt(); y++) {
       candidates.add(
         EntityInteractionTarget(
+          kind: interactionKind,
           tile: math.Point(bounds.left.toInt() - 1, y),
           facing: PlayerFacing.right,
         ),
       );
       candidates.add(
         EntityInteractionTarget(
+          kind: interactionKind,
           tile: math.Point(bounds.right.toInt(), y),
           facing: PlayerFacing.left,
         ),
@@ -354,12 +359,14 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     for (var x = bounds.left.toInt(); x < bounds.right.toInt(); x++) {
       candidates.add(
         EntityInteractionTarget(
+          kind: interactionKind,
           tile: math.Point(x, bounds.top.toInt() - 1),
           facing: PlayerFacing.front,
         ),
       );
       candidates.add(
         EntityInteractionTarget(
+          kind: interactionKind,
           tile: math.Point(x, bounds.bottom.toInt()),
           facing: PlayerFacing.back,
         ),
@@ -1066,6 +1073,18 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required Paint paint,
     required Paint borderPaint,
   }) {
+    if (entity.isBank) {
+      _drawBankChest(
+        canvas: canvas,
+        entity: entity,
+        layer: layer,
+        offset: offset,
+        viewport: viewport,
+        drawTileSize: drawTileSize,
+      );
+      return;
+    }
+
     final visual = entityVisualDefinitions[entity.resourceKey];
     if (visual != null) {
       final image = _entityImages[visual.imageKey];
@@ -1154,6 +1173,114 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     }
     canvas.drawImageRect(_tileset, source, destination, paint);
     canvas.drawRect(destination.deflate(1), borderPaint);
+  }
+
+  void _drawBankChest({
+    required Canvas canvas,
+    required WorldEntity entity,
+    required _EntityRenderLayer layer,
+    required Offset offset,
+    required Rect viewport,
+    required double drawTileSize,
+  }) {
+    if (layer != _EntityRenderLayer.foreground) {
+      return;
+    }
+
+    final destination = Rect.fromLTWH(
+      offset.dx + entity.x * drawTileSize,
+      offset.dy + entity.y * drawTileSize,
+      drawTileSize,
+      drawTileSize,
+    );
+    if (!destination.overlaps(viewport)) {
+      return;
+    }
+
+    final chestRect = Rect.fromLTWH(
+      destination.left + drawTileSize * 0.14,
+      destination.top + drawTileSize * 0.26,
+      drawTileSize * 0.72,
+      drawTileSize * 0.56,
+    );
+    final lidRect = Rect.fromLTWH(
+      chestRect.left,
+      chestRect.top,
+      chestRect.width,
+      chestRect.height * 0.34,
+    );
+    final bodyRect = Rect.fromLTWH(
+      chestRect.left,
+      chestRect.top + chestRect.height * 0.26,
+      chestRect.width,
+      chestRect.height * 0.74,
+    );
+    final lockRect = Rect.fromLTWH(
+      chestRect.center.dx - chestRect.width * 0.08,
+      chestRect.top + chestRect.height * 0.30,
+      chestRect.width * 0.16,
+      chestRect.height * 0.34,
+    );
+    final outline =
+        Paint()
+          ..color = const Color(0xFF2E1A0F)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.2, drawTileSize * 0.06)
+          ..isAntiAlias = false;
+    final lidPaint =
+        Paint()
+          ..color = const Color(0xFF8C5A2E)
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = false;
+    final bodyPaint =
+        Paint()
+          ..color = const Color(0xFF6F3F1F)
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = false;
+    final bandPaint =
+        Paint()
+          ..color = const Color(0xFFC9A24E)
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = false;
+    final shadowPaint =
+        Paint()
+          ..color = const Color(0x55000000)
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = false;
+
+    canvas.drawRect(
+      Rect.fromLTWH(
+        chestRect.left + drawTileSize * 0.04,
+        chestRect.bottom - drawTileSize * 0.02,
+        chestRect.width,
+        drawTileSize * 0.10,
+      ),
+      shadowPaint,
+    );
+    canvas.drawRect(bodyRect, bodyPaint);
+    canvas.drawRect(lidRect, lidPaint);
+    canvas.drawRect(
+      Rect.fromLTWH(
+        chestRect.left + chestRect.width * 0.12,
+        chestRect.top + chestRect.height * 0.22,
+        chestRect.width * 0.12,
+        chestRect.height * 0.70,
+      ),
+      bandPaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        chestRect.right - chestRect.width * 0.24,
+        chestRect.top + chestRect.height * 0.22,
+        chestRect.width * 0.12,
+        chestRect.height * 0.70,
+      ),
+      bandPaint,
+    );
+    canvas.drawRect(lockRect, bandPaint);
+    canvas.drawRect(chestRect, outline);
+    canvas.drawRect(lidRect, outline);
+    canvas.drawRect(lockRect, outline);
   }
 
   void _drawEntityVisualLayer({

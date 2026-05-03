@@ -357,6 +357,7 @@ class GameSocket {
       await request('player.get');
       await request('entities.get');
       await request('inventory.get');
+      await request('bank.get');
       _debugLog('resync-ok');
     } catch (error) {
       _debugLog('resync-failed', {'error': error.toString()});

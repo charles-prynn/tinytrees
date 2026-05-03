@@ -13,6 +13,8 @@ import (
 const (
 	resourceStateIdle             = "idle"
 	resourceStateDepleted         = "depleted"
+	bankEntityType                = "bank"
+	bankEntityResourceKey         = "bank_chest"
 	resourceNodeTargetCount       = 100
 	resourceStumpLifetime         = 30 * time.Second
 	defaultResourceSkillKey       = "woodcutting"
@@ -130,6 +132,15 @@ func ensureResourceNodes(ctx context.Context, entityStore storepkg.EntityStore, 
 		filtered = append(filtered, entity)
 	}
 
+	if bankEntity, ok := ensureBankEntity(userID, filtered); ok {
+		created, err := entityStore.CreateEntity(ctx, bankEntity)
+		if err != nil {
+			return nil, err
+		}
+		filtered = append(filtered, created)
+		changed = true
+	}
+
 	missing := missingTreeTypes(filtered)
 	for _, resourceKey := range missing {
 		entity, ok := spawnResourceEntity(userID, filtered, resourceKey, tileMap.Width, tileMap.Height)
@@ -148,6 +159,29 @@ func ensureResourceNodes(ctx context.Context, entityStore storepkg.EntityStore, 
 		return filtered, nil
 	}
 	return filtered, nil
+}
+
+func ensureBankEntity(userID uuid.UUID, entities []domain.Entity) (domain.Entity, bool) {
+	for _, entity := range entities {
+		if entity.Type == bankEntityType {
+			return domain.Entity{}, false
+		}
+	}
+
+	return domain.Entity{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Name:        "Bank",
+		Type:        bankEntityType,
+		ResourceKey: bankEntityResourceKey,
+		X:           18,
+		Y:           8,
+		Width:       1,
+		Height:      1,
+		SpriteGID:   1,
+		State:       resourceStateIdle,
+		Metadata:    map[string]any{},
+	}, true
 }
 
 func depleteResourceNode(ctx context.Context, entityStore storepkg.EntityStore, entity domain.Entity, now time.Time) (domain.Entity, error) {

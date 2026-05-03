@@ -283,7 +283,7 @@ func blockedEntityTiles(entities []domain.Entity) map[domain.Point]struct{} {
 }
 
 func entityBlocksMovement(entity domain.Entity) bool {
-	return entity.Type == "resource" && entity.State != "depleted"
+	return entity.State != resourceStateDepleted && (entity.Type == "resource" || entity.Type == bankEntityType)
 }
 
 func reconstructPath(cameFrom map[domain.Point]domain.Point, from domain.Point, target domain.Point) []domain.Point {

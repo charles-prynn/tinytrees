@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/realtime/game_socket.dart';
+import '../../bank/data/bank_repository.dart';
 import '../../bootstrap/data/bootstrap_repository.dart';
 import '../../entities/data/entity_repository.dart';
 import '../../inventory/data/inventory_repository.dart';
@@ -85,6 +86,7 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     ref.invalidate(worldEntitiesProvider);
     ref.invalidate(playerControllerProvider);
     ref.invalidate(inventoryProvider);
+    ref.invalidate(bankProvider);
     ref.invalidate(stateSnapshotProvider);
   }
 }

@@ -63,6 +63,53 @@ func TestActionServiceResolveAwardsInventoryAndSkillXP(t *testing.T) {
 	}
 }
 
+func TestActionServiceResolveRespectsInventorySlotLimit(t *testing.T) {
+	userID := uuid.New()
+	startedAt := time.Date(2026, time.April, 24, 10, 0, 0, 0, time.UTC)
+	action := domain.PlayerAction{
+		ID:             uuid.New(),
+		UserID:         userID,
+		Type:           harvestActionType,
+		Status:         "active",
+		StartedAt:      startedAt,
+		EndsAt:         startedAt.Add(time.Minute),
+		NextTickAt:     startedAt.Add(time.Second),
+		TickIntervalMs: 1000,
+		Metadata: map[string]any{
+			"reward_item_key": "wood",
+			"reward_quantity": int64(5),
+			"success_chance":  1.0,
+			"skill_key":       "woodcutting",
+			"xp_per_reward":   int64(25),
+		},
+	}
+
+	actions := &memoryActions{active: &action}
+	inventory := &memoryInventory{
+		items: map[string]int64{"wood": domain.InventorySlotLimit - 2},
+	}
+	skills := &memorySkills{}
+	service := NewActionService(actions, inventory, skills, nil, nil)
+	service.now = func() time.Time { return startedAt.Add(1500 * time.Millisecond) }
+
+	resolved, err := service.Resolve(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if resolved == nil {
+		t.Fatal("expected active action")
+	}
+	if got := inventory.items["wood"]; got != domain.InventorySlotLimit {
+		t.Fatalf("expected inventory to cap at %d, got %d", domain.InventorySlotLimit, got)
+	}
+	if got := int64Metadata(resolved.Metadata, "rewards_granted", 0); got != 2 {
+		t.Fatalf("expected 2 rewards granted after cap, got %d", got)
+	}
+	if got := int64Metadata(resolved.Metadata, "xp_granted", 0); got != 50 {
+		t.Fatalf("expected xp_granted to match accepted items, got %d", got)
+	}
+}
+
 func TestActionServiceStartHarvestRequiresTreeLevel(t *testing.T) {
 	userID := uuid.New()
 	now := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
@@ -270,12 +317,17 @@ func (m *memoryInventory) ListInventory(_ context.Context, _ uuid.UUID) ([]domai
 	return nil, nil
 }
 
-func (m *memoryInventory) AddInventoryItem(_ context.Context, _ uuid.UUID, itemKey string, quantity int64) error {
+func (m *memoryInventory) AddInventoryItem(_ context.Context, _ uuid.UUID, itemKey string, quantity int64) (int64, error) {
 	if m.items == nil {
 		m.items = map[string]int64{}
 	}
-	m.items[itemKey] += quantity
-	return nil
+	current := m.items[itemKey]
+	next := current + quantity
+	if next > domain.InventorySlotLimit {
+		next = domain.InventorySlotLimit
+	}
+	m.items[itemKey] = next
+	return next - current, nil
 }
 
 type memorySkills struct {

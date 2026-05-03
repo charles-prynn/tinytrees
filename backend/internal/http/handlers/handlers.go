@@ -18,10 +18,11 @@ type Handler struct {
 	players       *service.PlayerService
 	actions       *service.ActionService
 	inventory     *service.InventoryService
+	admin         *service.AdminService
 	allowWSOrigin func(r *http.Request, origin string) bool
 }
 
-func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
+func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService, admin *service.AdminService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
 	return &Handler{
 		auth:          auth,
 		state:         state,
@@ -30,6 +31,7 @@ func New(auth *service.AuthService, state *service.StateService, maps *service.M
 		players:       players,
 		actions:       actions,
 		inventory:     inventory,
+		admin:         admin,
 		allowWSOrigin: allowWSOrigin,
 	}
 }
@@ -279,4 +281,121 @@ func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, r, http.StatusOK, map[string]any{"items": toInventoryDTOs(items)})
+}
+
+func (h *Handler) GetBank(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	items, err := h.inventory.ListBank(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": toInventoryDTOs(items)})
+}
+
+func (h *Handler) DepositBank(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+	var body bankDepositRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	entityID, err := body.EntityUUID()
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	moved, err := h.inventory.Deposit(r.Context(), userID, entityID, body.ItemKey, body.Quantity)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"moved": moved})
+}
+
+func (h *Handler) AdminOverview(w http.ResponseWriter, r *http.Request) {
+	overview, err := h.admin.Overview(r.Context())
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"overview": toAdminOverviewDTO(overview)})
+}
+
+func (h *Handler) AdminUserDetail(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromParam(r)
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	detail, err := h.admin.UserDetail(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"user": toAdminUserDetailDTO(detail)})
+}
+
+func (h *Handler) AdminGrantInventory(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromParam(r)
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	var body adminGrantInventoryRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	if err := h.admin.GrantInventory(r.Context(), userID, body.ItemKey, body.Quantity); err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *Handler) AdminGrantXP(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromParam(r)
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	var body adminGrantXPRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	skill, err := h.admin.GrantXP(r.Context(), userID, body.SkillKey, body.XP)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"skill": toPlayerSkillDTO(skill)})
+}
+
+func (h *Handler) AdminSetPlayerPosition(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromParam(r)
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	var body adminSetPlayerPositionRequest
+	if err := response.DecodeJSON(r, &body); err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+	player, err := h.admin.SetPlayerPosition(r.Context(), userID, body.X, body.Y)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"player": toPlayerDTO(player)})
 }

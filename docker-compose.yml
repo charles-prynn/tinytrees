@@ -41,12 +41,23 @@ services:
       REFRESH_TOKEN_SECRET: change-me-refresh
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL: 720h
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:8080
+      ADMIN_SECRET: change-me-admin
     ports:
       - "8080:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  admin:
+    build:
+      context: ./admin
+    environment:
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:

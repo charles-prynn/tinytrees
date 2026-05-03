@@ -24,6 +24,7 @@ type PostgresStores struct {
 	Entities  *PostgresEntityStore
 	Players   *PostgresPlayerStore
 	Inventory *PostgresInventoryStore
+	Bank      *PostgresBankStore
 	Skills    *PostgresSkillStore
 	Actions   *PostgresActionStore
 }
@@ -37,6 +38,7 @@ func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
 		Entities:  &PostgresEntityStore{pool: pool},
 		Players:   &PostgresPlayerStore{pool: pool},
 		Inventory: &PostgresInventoryStore{pool: pool},
+		Bank:      &PostgresBankStore{pool: pool},
 		Skills:    &PostgresSkillStore{pool: pool},
 		Actions:   &PostgresActionStore{pool: pool},
 	}
@@ -51,6 +53,7 @@ func (s PostgresStores) Interfaces() Stores {
 		Entities:  s.Entities,
 		Players:   s.Players,
 		Inventory: s.Inventory,
+		Bank:      s.Bank,
 		Skills:    s.Skills,
 		Actions:   s.Actions,
 	}
@@ -98,6 +101,36 @@ func (s *PostgresUserStore) GetByID(ctx context.Context, id uuid.UUID) (domain.U
 		where id = $1
 	`, id).Scan(&user.ID, &user.Provider, &user.Username, &user.Email, &user.DisplayName, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
+}
+
+func (s *PostgresUserStore) ListUsers(ctx context.Context) ([]domain.User, error) {
+	rows, err := s.pool.Query(ctx, `
+		select id, provider, username, email, display_name, created_at, updated_at
+		from users
+		order by created_at desc, id desc
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []domain.User{}
+	for rows.Next() {
+		var user domain.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Provider,
+			&user.Username,
+			&user.Email,
+			&user.DisplayName,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
 }
 
 func (s *PostgresUserStore) GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error) {
@@ -672,6 +705,7 @@ func (s *PostgresInventoryStore) ListInventory(ctx context.Context, userID uuid.
 		select user_id, item_key, quantity, updated_at
 		from player_inventory
 		where user_id = $1
+		  and quantity > 0
 		order by item_key
 	`, userID)
 	if err != nil {
@@ -690,15 +724,135 @@ func (s *PostgresInventoryStore) ListInventory(ctx context.Context, userID uuid.
 	return items, rows.Err()
 }
 
-func (s *PostgresInventoryStore) AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) error {
-	_, err := s.pool.Exec(ctx, `
-		insert into player_inventory (user_id, item_key, quantity)
+func (s *PostgresInventoryStore) AddInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) (int64, error) {
+	if quantity <= 0 {
+		return 0, nil
+	}
+
+	var before int64
+	var after int64
+	err := s.pool.QueryRow(ctx, `
+		with existing as (
+			select quantity
+			from player_inventory
+			where user_id = $1 and item_key = $2
+		), upsert as (
+			insert into player_inventory (user_id, item_key, quantity)
+			values ($1, $2, least($3, $4))
+			on conflict (user_id, item_key) do update set
+				quantity = case
+					when player_inventory.quantity >= $3 then player_inventory.quantity
+					else least($3, player_inventory.quantity + excluded.quantity)
+				end,
+				updated_at = case
+					when player_inventory.quantity < $3 and least($3, player_inventory.quantity + excluded.quantity) <> player_inventory.quantity then now()
+					else player_inventory.updated_at
+				end
+			returning quantity
+		)
+		select
+			coalesce((select quantity from existing), 0),
+			(select quantity from upsert)
+	`, userID, itemKey, domain.InventorySlotLimit, quantity).Scan(&before, &after)
+	if err != nil {
+		return 0, err
+	}
+	return after - before, nil
+}
+
+type PostgresBankStore struct {
+	pool *pgxpool.Pool
+}
+
+func (s *PostgresBankStore) ListBank(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		select user_id, item_key, quantity, updated_at
+		from player_bank
+		where user_id = $1
+		  and quantity > 0
+		order by item_key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []domain.InventoryItem{}
+	for rows.Next() {
+		var item domain.InventoryItem
+		if err := rows.Scan(&item.UserID, &item.ItemKey, &item.Quantity, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresBankStore) DepositInventoryItem(ctx context.Context, userID uuid.UUID, itemKey string, quantity int64) (int64, error) {
+	if quantity <= 0 {
+		return 0, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	var current int64
+	err = tx.QueryRow(ctx, `
+		select quantity
+		from player_inventory
+		where user_id = $1 and item_key = $2
+		for update
+	`, userID, itemKey).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	moved := quantity
+	if current < moved {
+		moved = current
+	}
+	if moved <= 0 {
+		return 0, nil
+	}
+
+	remaining := current - moved
+	if remaining > 0 {
+		if _, err := tx.Exec(ctx, `
+			update player_inventory
+			set quantity = $3, updated_at = now()
+			where user_id = $1 and item_key = $2
+		`, userID, itemKey, remaining); err != nil {
+			return 0, err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, `
+			delete from player_inventory
+			where user_id = $1 and item_key = $2
+		`, userID, itemKey); err != nil {
+			return 0, err
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		insert into player_bank (user_id, item_key, quantity)
 		values ($1, $2, $3)
 		on conflict (user_id, item_key) do update set
-			quantity = player_inventory.quantity + excluded.quantity,
+			quantity = player_bank.quantity + excluded.quantity,
 			updated_at = now()
-	`, userID, itemKey, quantity)
-	return err
+	`, userID, itemKey, moved); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return moved, nil
 }
 
 type PostgresSkillStore struct {

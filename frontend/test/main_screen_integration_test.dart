@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:treescape/features/auth/data/auth_controller.dart';
+import 'package:treescape/features/bank/data/bank_repository.dart';
 import 'package:treescape/features/auth/domain/auth_session.dart';
 import 'package:treescape/features/auth/domain/user.dart';
 import 'package:treescape/features/entities/data/entity_repository.dart';
@@ -219,6 +220,7 @@ void main() {
           worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
           playerStateProvider.overrideWith((ref) async => _playerState()),
           inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
+          bankProvider.overrideWith((ref) => Stream.value(_bank)),
           stateSnapshotProvider.overrideWith((ref) async => _snapshot),
         ],
         child: const MaterialApp(
@@ -272,10 +274,11 @@ void main() {
             worldEntitiesProvider.overrideWith(
               (ref) => entitiesCompleter.future.asStream(),
             ),
-            playerControllerProvider.overrideWith(
+          playerControllerProvider.overrideWith(
               () => _DelayedPlayerController(playerCompleter.future),
             ),
             inventoryProvider.overrideWith((ref) => inventoryController.stream),
+            bankProvider.overrideWith((ref) => Stream.value(_bank)),
             stateSnapshotProvider.overrideWith((ref) async => _snapshot),
           ],
           child: const MaterialApp(
@@ -324,6 +327,7 @@ Widget _buildTestApp({required PlayerState player}) {
       worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
       playerStateProvider.overrideWith((ref) async => player),
       inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
+      bankProvider.overrideWith((ref) => Stream.value(_bank)),
       stateSnapshotProvider.overrideWith((ref) async => _snapshot),
     ],
     child: const MaterialApp(
@@ -424,6 +428,8 @@ const _entities = [
 const _inventory = [
   InventoryItem(itemKey: 'wood', quantity: 12, updatedAt: null),
 ];
+
+const _bank = <InventoryItem>[];
 
 final _snapshot = StateSnapshot(
   version: 7,

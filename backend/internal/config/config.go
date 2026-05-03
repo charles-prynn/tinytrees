@@ -16,6 +16,7 @@ type Config struct {
 	AccessTokenTTL     time.Duration
 	RefreshTokenTTL    time.Duration
 	AllowedOrigins     []string
+	AdminSecret        string
 }
 
 func Load() (Config, error) {
@@ -27,6 +28,7 @@ func Load() (Config, error) {
 		AccessTokenTTL:     getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:    getDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		AllowedOrigins:     getList("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:8080"}),
+		AdminSecret:        strings.TrimSpace(os.Getenv("ADMIN_SECRET")),
 	}
 
 	if cfg.DatabaseURL == "" {

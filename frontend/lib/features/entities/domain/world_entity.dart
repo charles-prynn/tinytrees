@@ -26,6 +26,7 @@ class WorldEntity {
   final Map<String, dynamic> metadata;
 
   bool get isDepleted => state == 'depleted';
+  bool get isBank => type == 'bank';
 
   factory WorldEntity.fromJson(Map<String, dynamic> json) {
     return WorldEntity(

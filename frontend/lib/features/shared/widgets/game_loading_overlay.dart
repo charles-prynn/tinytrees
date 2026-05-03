@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../bank/data/bank_repository.dart';
 import '../../entities/data/entity_repository.dart';
 import '../../inventory/data/inventory_repository.dart';
 import '../../map/application/map_controller.dart';
@@ -17,4 +18,5 @@ void retryGameLoad(WidgetRef ref) {
   ref.invalidate(worldEntitiesProvider);
   ref.invalidate(playerControllerProvider);
   ref.invalidate(inventoryProvider);
+  ref.invalidate(bankProvider);
 }
