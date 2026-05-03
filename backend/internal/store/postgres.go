@@ -738,14 +738,14 @@ func (s *PostgresInventoryStore) AddInventoryItem(ctx context.Context, userID uu
 			where user_id = $1 and item_key = $2
 		), upsert as (
 			insert into player_inventory (user_id, item_key, quantity)
-			values ($1, $2, least($3, $4))
+			values ($1, $2, least($3::bigint, $4::bigint))
 			on conflict (user_id, item_key) do update set
 				quantity = case
-					when player_inventory.quantity >= $3 then player_inventory.quantity
-					else least($3, player_inventory.quantity + excluded.quantity)
+					when player_inventory.quantity >= $3::bigint then player_inventory.quantity
+					else least($3::bigint, player_inventory.quantity + excluded.quantity)
 				end,
 				updated_at = case
-					when player_inventory.quantity < $3 and least($3, player_inventory.quantity + excluded.quantity) <> player_inventory.quantity then now()
+					when player_inventory.quantity < $3::bigint and least($3::bigint, player_inventory.quantity + excluded.quantity) <> player_inventory.quantity then now()
 					else player_inventory.updated_at
 				end
 			returning quantity
