@@ -98,7 +98,7 @@ func TestInventoryServiceDepositRequiresAdjacentBank(t *testing.T) {
 
 type memoryBank struct {
 	inventory *memoryInventory
-	items      map[string]int64
+	items     map[string]int64
 }
 
 func (m *memoryBank) ListBank(_ context.Context, _ uuid.UUID) ([]domain.InventoryItem, error) {

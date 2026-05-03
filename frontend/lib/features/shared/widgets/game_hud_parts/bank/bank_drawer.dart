@@ -16,7 +16,8 @@ class BankDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width.clamp(320.0, 840.0).toDouble();
+    final width =
+        MediaQuery.sizeOf(context).width.clamp(320.0, 840.0).toDouble();
     return Container(
       key: const ValueKey('bank-drawer'),
       width: width,
@@ -78,10 +79,8 @@ class BankDrawer extends StatelessWidget {
               subtitle: '1024 per slot',
               child: inventory.when(
                 data:
-                    (items) => _BankInventoryRow(
-                      items: items,
-                      onDeposit: onDeposit,
-                    ),
+                    (items) =>
+                        _BankInventoryRow(items: items, onDeposit: onDeposit),
                 loading: () => const InventoryGridLoading(),
                 error: (_, _) => const InventoryGridError(),
               ),
@@ -215,7 +214,9 @@ class _BankStorageRow extends StatelessWidget {
           children: [
             for (var index = 0; index < items.length; index++)
               Padding(
-                padding: EdgeInsets.only(right: index == items.length - 1 ? 0 : 5),
+                padding: EdgeInsets.only(
+                  right: index == items.length - 1 ? 0 : 5,
+                ),
                 child: SizedBox(
                   width: 58,
                   child: InventorySlot(item: items[index]),

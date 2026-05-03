@@ -274,7 +274,7 @@ void main() {
             worldEntitiesProvider.overrideWith(
               (ref) => entitiesCompleter.future.asStream(),
             ),
-          playerControllerProvider.overrideWith(
+            playerControllerProvider.overrideWith(
               () => _DelayedPlayerController(playerCompleter.future),
             ),
             inventoryProvider.overrideWith((ref) => inventoryController.stream),

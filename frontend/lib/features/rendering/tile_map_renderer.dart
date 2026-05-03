@@ -337,7 +337,9 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final bounds = _entityCollisionBounds(entity);
     final candidates = <EntityInteractionTarget>[];
     final interactionKind =
-        entity.isBank ? EntityInteractionKind.bank : EntityInteractionKind.harvest;
+        entity.isBank
+            ? EntityInteractionKind.bank
+            : EntityInteractionKind.harvest;
 
     for (var y = bounds.top.toInt(); y < bounds.bottom.toInt(); y++) {
       candidates.add(

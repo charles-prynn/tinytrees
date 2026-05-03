@@ -19,14 +19,16 @@ func TestEnsureResourceNodesPlacesTreesInsideAssignedForests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensureResourceNodes returned error: %v", err)
 	}
-	if len(entities) != resourceNodeTargetCount {
-		t.Fatalf("expected %d resource nodes, got %d", resourceNodeTargetCount, len(entities))
-	}
 
 	counts := map[string]int{}
 	expectedCounts := scaledTreeTargetCounts(resourceNodeTargetCount)
 	tileMap := storepkg.DefaultTileMap(userID)
+	bankCount := 0
 	for _, entity := range entities {
+		if entity.Type == bankEntityType {
+			bankCount++
+			continue
+		}
 		clusters, ok := forestClustersForMap(entity.ResourceKey, tileMap.Width, tileMap.Height)
 		if !ok {
 			t.Fatalf("missing forest clusters for %q", entity.ResourceKey)
@@ -35,6 +37,9 @@ func TestEnsureResourceNodesPlacesTreesInsideAssignedForests(t *testing.T) {
 			t.Fatalf("entity %+v spawned outside forest clusters %+v", entity, clusters)
 		}
 		counts[entity.ResourceKey]++
+	}
+	if bankCount != 1 {
+		t.Fatalf("expected 1 bank entity, got %d", bankCount)
 	}
 
 	for key, expected := range expectedCounts {
@@ -54,7 +59,13 @@ func TestEnsureResourceNodesKeepsTreesSpacedApart(t *testing.T) {
 	}
 
 	for i := 0; i < len(entities); i++ {
+		if entities[i].Type == bankEntityType {
+			continue
+		}
 		for j := i + 1; j < len(entities); j++ {
+			if entities[j].Type == bankEntityType {
+				continue
+			}
 			first := domain.Point{X: entities[i].X, Y: entities[i].Y}
 			second := domain.Point{X: entities[j].X, Y: entities[j].Y}
 			if !hasMinimumGap(first, second, minForestTreeGapTiles) {

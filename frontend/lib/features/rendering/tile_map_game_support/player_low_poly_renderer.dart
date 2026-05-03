@@ -26,9 +26,11 @@ const _playerLeftLegStanceRoll = -0.05;
 const _playerRightLegStanceRoll = 0.05;
 const _playerDefaultShadowHeightTiles = 0.2;
 const _playerLowPolyModel = _PlayerModelSpec(
-  torso: _PlayerBoxSpec(
+  torso: _PlayerPrismSpec(
     center: _PlayerModelVector3(0, 1.74, 0),
-    size: _PlayerModelVector3(0.92, 1.16, 0.58),
+    size: _PlayerModelVector3(0.90, 1.16, 0.62),
+    sides: 10,
+    rotation: math.pi / 10,
     color: _playerShirtColor,
   ),
   hips: _PlayerBoxSpec(
@@ -36,19 +38,25 @@ const _playerLowPolyModel = _PlayerModelSpec(
     size: _PlayerModelVector3(0.88, 0.18, 0.62),
     color: _playerPantsColor,
   ),
-  head: _PlayerBoxSpec(
+  head: _PlayerPrismSpec(
     center: _PlayerModelVector3(0, 0.36, 0),
-    size: _PlayerModelVector3(0.72, 0.72, 0.72),
+    size: _PlayerModelVector3(0.78, 0.72, 0.78),
+    sides: 12,
+    rotation: math.pi / 12,
     color: _playerSkinColor,
   ),
-  arm: _PlayerBoxSpec(
+  arm: _PlayerPrismSpec(
     center: _PlayerModelVector3(0, -0.46, 0),
-    size: _PlayerModelVector3(0.26, 0.92, 0.26),
+    size: _PlayerModelVector3(0.24, 0.92, 0.24),
+    sides: 8,
+    rotation: math.pi / 8,
     color: _playerShirtColor,
   ),
-  leg: _PlayerBoxSpec(
+  leg: _PlayerPrismSpec(
     center: _PlayerModelVector3(0, -0.51, 0),
-    size: _PlayerModelVector3(0.34, 1.02, 0.36),
+    size: _PlayerModelVector3(0.32, 1.02, 0.34),
+    sides: 8,
+    rotation: math.pi / 8,
     color: _playerPantsColor,
   ),
   boot: _PlayerBoxSpec(
@@ -115,9 +123,9 @@ void _drawLowPolyPlayer({
   );
 
   final faces = <_PlayerProjectedFace>[];
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.torso,
+    prism: model.torso,
     transforms: [rig.root],
     footX: footX,
     footY: footY,
@@ -131,25 +139,25 @@ void _drawLowPolyPlayer({
     footY: footY,
     unit: unit,
   );
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.head,
+    prism: model.head,
     transforms: [rig.head, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.leg,
+    prism: model.leg,
     transforms: [rig.leftLeg, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.leg,
+    prism: model.leg,
     transforms: [rig.rightLeg, rig.root],
     footX: footX,
     footY: footY,
@@ -171,17 +179,17 @@ void _drawLowPolyPlayer({
     footY: footY,
     unit: unit,
   );
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.arm,
+    prism: model.arm,
     transforms: [rig.leftArm, rig.root],
     footX: footX,
     footY: footY,
     unit: unit,
   );
-  _appendCuboidFaces(
+  _appendPrismFaces(
     faces,
-    box: model.arm,
+    prism: model.arm,
     transforms: [rig.rightArm, rig.root],
     footX: footX,
     footY: footY,
@@ -394,44 +402,171 @@ void _appendCuboidFaces(
   ];
 
   for (final quad in quads) {
-    final a = transformed[quad[0]];
-    final b = transformed[quad[1]];
-    final c = transformed[quad[2]];
-    final normal = (b - a).cross(c - a).normalized();
-    if (normal.dot(_playerModelViewDirection) >= -0.02) {
-      continue;
-    }
-    final projected = [
-      for (final index in quad)
-        _projectPlayerPoint(
-          transformed[index],
-          footX: footX,
-          footY: footY,
-          unit: unit,
-        ),
-    ];
-    final path =
-        Path()
-          ..moveTo(projected[0].dx, projected[0].dy)
-          ..lineTo(projected[1].dx, projected[1].dy)
-          ..lineTo(projected[2].dx, projected[2].dy)
-          ..lineTo(projected[3].dx, projected[3].dy)
-          ..close();
-    final light = normal.dot(_playerModelLightDirection).clamp(-1, 1);
-    final brightness = (0.56 + math.max(0, light) * 0.34).clamp(0.42, 1.0);
-    final depth =
-        quad
-            .map((index) => transformed[index].dot(_playerModelViewDirection))
-            .reduce((sum, value) => sum + value) /
-        quad.length;
-    faces.add(
-      _PlayerProjectedFace(
-        path: path,
-        depth: depth,
-        color: _shadePlayerColor(box.color, brightness),
+    _appendProjectedFace(
+      faces,
+      vertices: [for (final index in quad) transformed[index]],
+      shapeCenter: _applyPlayerTransforms(box.center, transforms),
+      color: box.color,
+      footX: footX,
+      footY: footY,
+      unit: unit,
+    );
+  }
+}
+
+void _appendPrismFaces(
+  List<_PlayerProjectedFace> faces, {
+  required _PlayerPrismSpec prism,
+  required List<_PlayerModelTransform> transforms,
+  required double footX,
+  required double footY,
+  required double unit,
+}) {
+  final halfWidth = prism.size.x * 0.5;
+  final halfHeight = prism.size.y * 0.5;
+  final halfDepth = prism.size.z * 0.5;
+  final bottomY = prism.center.y - halfHeight;
+  final topY = prism.center.y + halfHeight;
+  final angleStep = math.pi * 2 / prism.sides;
+  final vertices = <_PlayerModelVector3>[];
+
+  for (var index = 0; index < prism.sides; index++) {
+    final angle = prism.rotation + angleStep * index;
+    vertices.add(
+      _PlayerModelVector3(
+        prism.center.x + math.cos(angle) * halfWidth,
+        bottomY,
+        prism.center.z + math.sin(angle) * halfDepth,
       ),
     );
   }
+  for (var index = 0; index < prism.sides; index++) {
+    final angle = prism.rotation + angleStep * index;
+    vertices.add(
+      _PlayerModelVector3(
+        prism.center.x + math.cos(angle) * halfWidth,
+        topY,
+        prism.center.z + math.sin(angle) * halfDepth,
+      ),
+    );
+  }
+
+  final transformed = [
+    for (final vertex in vertices) _applyPlayerTransforms(vertex, transforms),
+  ];
+  final transformedCenter = _applyPlayerTransforms(prism.center, transforms);
+  final topFace = <_PlayerModelVector3>[];
+  final bottomFace = <_PlayerModelVector3>[];
+  for (var index = 0; index < prism.sides; index++) {
+    bottomFace.add(transformed[index]);
+    topFace.add(transformed[prism.sides + index]);
+  }
+
+  _appendProjectedFace(
+    faces,
+    vertices: topFace,
+    shapeCenter: transformedCenter,
+    color: prism.color,
+    footX: footX,
+    footY: footY,
+    unit: unit,
+  );
+  _appendProjectedFace(
+    faces,
+    vertices: bottomFace.reversed.toList(),
+    shapeCenter: transformedCenter,
+    color: prism.color,
+    footX: footX,
+    footY: footY,
+    unit: unit,
+  );
+
+  for (var index = 0; index < prism.sides; index++) {
+    final nextIndex = (index + 1) % prism.sides;
+    _appendProjectedFace(
+      faces,
+      vertices: [
+        transformed[index],
+        transformed[nextIndex],
+        transformed[prism.sides + nextIndex],
+        transformed[prism.sides + index],
+      ],
+      shapeCenter: transformedCenter,
+      color: prism.color,
+      footX: footX,
+      footY: footY,
+      unit: unit,
+    );
+  }
+}
+
+void _appendProjectedFace(
+  List<_PlayerProjectedFace> faces, {
+  required List<_PlayerModelVector3> vertices,
+  required _PlayerModelVector3 shapeCenter,
+  required Color color,
+  required double footX,
+  required double footY,
+  required double unit,
+}) {
+  if (vertices.length < 3) {
+    return;
+  }
+
+  var ordered = vertices;
+  var normal = _faceNormalFor(ordered);
+  if (normal.magnitude == 0) {
+    return;
+  }
+
+  final faceCenter = _averagePlayerPoint(ordered);
+  if (normal.dot(faceCenter - shapeCenter) < 0) {
+    ordered = ordered.reversed.toList();
+    normal = _faceNormalFor(ordered);
+  }
+  if (normal.dot(_playerModelViewDirection) >= -0.02) {
+    return;
+  }
+
+  final projected = [
+    for (final vertex in ordered)
+      _projectPlayerPoint(vertex, footX: footX, footY: footY, unit: unit),
+  ];
+  final path = Path()..moveTo(projected.first.dx, projected.first.dy);
+  for (final point in projected.skip(1)) {
+    path.lineTo(point.dx, point.dy);
+  }
+  path.close();
+
+  final light = normal.dot(_playerModelLightDirection).clamp(-1, 1);
+  final brightness = (0.56 + math.max(0, light) * 0.34).clamp(0.42, 1.0);
+  final depth =
+      ordered
+          .map((vertex) => vertex.dot(_playerModelViewDirection))
+          .reduce((sum, value) => sum + value) /
+      ordered.length;
+  faces.add(
+    _PlayerProjectedFace(
+      path: path,
+      depth: depth,
+      color: _shadePlayerColor(color, brightness),
+    ),
+  );
+}
+
+_PlayerModelVector3 _faceNormalFor(List<_PlayerModelVector3> vertices) {
+  final a = vertices[0];
+  final b = vertices[1];
+  final c = vertices[2];
+  return (b - a).cross(c - a).normalized();
+}
+
+_PlayerModelVector3 _averagePlayerPoint(List<_PlayerModelVector3> vertices) {
+  var sum = _PlayerModelVector3.zero;
+  for (final vertex in vertices) {
+    sum = sum + vertex;
+  }
+  return sum.scale(1 / vertices.length);
 }
 
 _PlayerModelVector3 _applyPlayerTransforms(
@@ -528,11 +663,11 @@ class _PlayerModelSpec {
     required this.axe,
   });
 
-  final _PlayerBoxSpec torso;
+  final _PlayerPrismSpec torso;
   final _PlayerBoxSpec hips;
-  final _PlayerBoxSpec head;
-  final _PlayerBoxSpec arm;
-  final _PlayerBoxSpec leg;
+  final _PlayerPrismSpec head;
+  final _PlayerPrismSpec arm;
+  final _PlayerPrismSpec leg;
   final _PlayerBoxSpec boot;
   final _PlayerModelVector3 headAnchor;
   final _PlayerModelVector3 leftShoulderAnchor;
@@ -552,6 +687,22 @@ class _PlayerToolMountSpec {
   final _PlayerModelTransform gripTransform;
   final _PlayerBoxSpec handle;
   final _PlayerBoxSpec head;
+}
+
+class _PlayerPrismSpec {
+  const _PlayerPrismSpec({
+    required this.center,
+    required this.size,
+    required this.color,
+    required this.sides,
+    this.rotation = 0,
+  });
+
+  final _PlayerModelVector3 center;
+  final _PlayerModelVector3 size;
+  final Color color;
+  final int sides;
+  final double rotation;
 }
 
 class _PlayerBoxSpec {
