@@ -5,6 +5,8 @@ class InventoryDrawer extends StatelessWidget {
     super.key,
     required this.inventory,
     required this.onClose,
+    required this.title,
+    this.onItemTap,
   });
 
   static const _height = TopBar.barHeight;
@@ -13,6 +15,8 @@ class InventoryDrawer extends StatelessWidget {
 
   final AsyncValue<List<InventoryItem>> inventory;
   final VoidCallback onClose;
+  final String title;
+  final ValueChanged<InventoryItem>? onItemTap;
 
   double get _capWidth => _height * (_capSourceWidth / _sourceHeight);
 
@@ -68,8 +72,8 @@ class InventoryDrawer extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Text(
-                    'Inventory',
+                  Text(
+                    title,
                     style: TextStyle(
                       color: Color(0xFFE3D8C3),
                       fontSize: 10,
@@ -80,7 +84,9 @@ class InventoryDrawer extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: inventory.when(
-                      data: (items) => InventoryGrid(items: items),
+                      data:
+                          (items) =>
+                              InventoryGrid(items: items, onItemTap: onItemTap),
                       loading: () => const InventoryGridLoading(),
                       error: (_, _) => const InventoryGridError(),
                     ),

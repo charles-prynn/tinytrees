@@ -27,6 +27,7 @@ type PostgresStores struct {
 	Bank      *PostgresBankStore
 	Skills    *PostgresSkillStore
 	Actions   *PostgresActionStore
+	Events    *PostgresEventStore
 }
 
 func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
@@ -41,6 +42,7 @@ func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
 		Bank:      &PostgresBankStore{pool: pool},
 		Skills:    &PostgresSkillStore{pool: pool},
 		Actions:   &PostgresActionStore{pool: pool},
+		Events:    &PostgresEventStore{pool: pool},
 	}
 }
 
@@ -56,6 +58,7 @@ func (s PostgresStores) Interfaces() Stores {
 		Bank:      s.Bank,
 		Skills:    s.Skills,
 		Actions:   s.Actions,
+		Events:    s.Events,
 	}
 }
 

@@ -50,6 +50,7 @@ make migrate-down
 - `POST /v1/player/move`
 - `GET /v1/actions/current`
 - `POST /v1/actions/harvest`
+- `GET /v1/events`
 - `GET /v1/inventory`
 - `GET /v1/admin/overview`
 - `GET /v1/admin/users/{userID}`
@@ -108,6 +109,25 @@ Errors use the same shape as HTTP errors:
 ```json
 { "id": "3", "type": "player.move.error", "error": { "code": "validation_error", "message": "move target is not walkable" } }
 ```
+
+## Action Events
+
+Long-running player actions are now resolved by a background worker instead of
+only when a player reads state. Durable player-scoped events are recorded in the
+database and can be fetched with:
+
+```text
+GET /v1/events?after_id=0&limit=50
+Authorization: Bearer <access_token>
+```
+
+The event log includes entries such as:
+
+- `action.started`
+- `action.cancelled`
+- `action.completed`
+- `resource.depleted`
+- `skill.level_up`
 
 ## Auth Modes
 

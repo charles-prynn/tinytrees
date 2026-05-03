@@ -69,6 +69,16 @@ type ActionStore interface {
 	GetActiveAction(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error)
 	CreateAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error)
 	SaveAction(ctx context.Context, action domain.PlayerAction) (domain.PlayerAction, error)
+	ClaimNextDueAction(ctx context.Context, now time.Time) (*domain.PlayerAction, error)
+}
+
+type EventStore interface {
+	ListEvents(ctx context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error)
+	AppendEvents(ctx context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error)
+}
+
+type Transactor interface {
+	WithinTx(ctx context.Context, fn func(Stores) error) error
 }
 
 type Stores struct {
@@ -82,4 +92,5 @@ type Stores struct {
 	Bank      BankStore
 	Skills    SkillStore
 	Actions   ActionStore
+	Events    EventStore
 }

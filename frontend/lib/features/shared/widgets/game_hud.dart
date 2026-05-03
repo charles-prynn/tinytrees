@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -22,13 +21,13 @@ import 'registration_popup.dart';
 
 part 'game_hud_parts/top_bar/top_bar.dart';
 part 'game_hud_parts/top_bar/inventory_top_bar_section.dart';
+part 'game_hud_parts/bank/bank_panel.dart';
 part 'game_hud_parts/inventory/inventory_drawer.dart';
 part 'game_hud_parts/inventory/inventory_close_button.dart';
 part 'game_hud_parts/inventory/inventory_grid.dart';
 part 'game_hud_parts/inventory/inventory_grid_loading.dart';
 part 'game_hud_parts/inventory/inventory_grid_error.dart';
 part 'game_hud_parts/inventory/inventory_slot.dart';
-part 'game_hud_parts/bank/bank_drawer.dart';
 part 'game_hud_parts/details/user_top_bar_section.dart';
 part 'game_hud_parts/details/activity_top_bar_section.dart';
 part 'game_hud_parts/details/woodcutting_top_bar_section.dart';
@@ -58,7 +57,7 @@ class GameHud extends ConsumerWidget {
     required this.onInventoryPressed,
     required this.onInventoryClosed,
     required this.onBankClosed,
-    required this.onBankDeposit,
+    this.onInventoryItemTap,
     required this.onPlayerRenderModeToggle,
     required this.onLoginPressed,
     required this.onLoginClosed,
@@ -78,7 +77,7 @@ class GameHud extends ConsumerWidget {
   final VoidCallback onInventoryPressed;
   final VoidCallback onInventoryClosed;
   final VoidCallback onBankClosed;
-  final Future<void> Function(InventoryItem item) onBankDeposit;
+  final ValueChanged<InventoryItem>? onInventoryItemTap;
   final VoidCallback onPlayerRenderModeToggle;
   final VoidCallback onLoginPressed;
   final VoidCallback onLoginClosed;
@@ -116,23 +115,28 @@ class GameHud extends ConsumerWidget {
               ),
             ),
           ),
+        if (bankOpen)
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 86, 20, 96),
+              child: Align(
+                alignment: Alignment.center,
+                child: BankPanel(bank: bank, onClose: onBankClosed),
+              ),
+            ),
+          ),
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: Align(
               alignment: Alignment.bottomCenter,
               child:
-                  bankOpen
-                      ? BankDrawer(
-                        inventory: inventory,
-                        bank: bank,
-                        onClose: onBankClosed,
-                        onDeposit: onBankDeposit,
-                      )
-                      : inventoryOpen
+                  inventoryOpen
                       ? InventoryDrawer(
                         inventory: inventory,
                         onClose: onInventoryClosed,
+                        title: 'Inventory',
+                        onItemTap: onInventoryItemTap,
                       )
                       : const SizedBox.shrink(),
             ),

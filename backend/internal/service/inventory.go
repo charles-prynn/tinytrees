@@ -39,11 +39,6 @@ func NewInventoryService(inventory store.InventoryStore, bank store.BankStore, p
 }
 
 func (s *InventoryService) List(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error) {
-	if s.actions != nil {
-		if _, err := s.actions.Resolve(ctx, userID); err != nil {
-			return nil, err
-		}
-	}
 	return s.inventory.ListInventory(ctx, userID)
 }
 

@@ -34,12 +34,14 @@ var (
 )
 
 type ActionService struct {
-	actions   store.ActionStore
-	inventory store.InventoryStore
-	skills    store.SkillStore
-	players   store.PlayerStore
-	entities  store.EntityStore
-	now       func() time.Time
+	actions    store.ActionStore
+	inventory  store.InventoryStore
+	skills     store.SkillStore
+	players    store.PlayerStore
+	entities   store.EntityStore
+	events     store.EventStore
+	transactor store.Transactor
+	now        func() time.Time
 }
 
 func NewActionService(actions store.ActionStore, inventory store.InventoryStore, skills store.SkillStore, players store.PlayerStore, entities store.EntityStore) *ActionService {
@@ -53,119 +55,192 @@ func NewActionService(actions store.ActionStore, inventory store.InventoryStore,
 	}
 }
 
+func (s *ActionService) SetTransactor(transactor store.Transactor) {
+	s.transactor = transactor
+}
+
+func (s *ActionService) SetEventStore(events store.EventStore) {
+	s.events = events
+}
+
 func (s *ActionService) Current(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error) {
 	return s.Resolve(ctx, userID)
 }
 
 func (s *ActionService) CancelActive(ctx context.Context, userID uuid.UUID) error {
-	action, err := s.Resolve(ctx, userID)
-	if err != nil || action == nil {
-		return err
-	}
-	action.Status = "cancelled"
-	_, err = s.actions.SaveAction(ctx, *action)
-	return err
+	now := s.now()
+	return s.withWriteStores(ctx, func(stores store.Stores) error {
+		action, err := stores.Actions.GetActiveAction(ctx, userID)
+		if err != nil || action == nil {
+			return err
+		}
+		action.Status = "cancelled"
+		if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
+			return err
+		}
+		return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.cancelled", now)})
+	})
 }
 
 func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) (domain.PlayerAction, error) {
-	activeAction, err := s.Resolve(ctx, userID)
-	if err != nil {
-		return domain.PlayerAction{}, err
-	}
-	if activeAction != nil {
-		return domain.PlayerAction{}, ErrActionInProgress
-	}
-
 	now := s.now()
-	player, err := s.players.GetPlayer(ctx, userID)
-	if err != nil {
-		return domain.PlayerAction{}, err
-	}
-	if movement := player.Movement; movement != nil {
-		if now.Before(movement.ArrivesAt) {
-			return domain.PlayerAction{}, ErrPlayerIsMoving
-		}
-		player.X = movement.TargetX
-		player.Y = movement.TargetY
-		player.Movement = nil
-		if _, err := s.players.SavePlayer(ctx, player); err != nil {
-			return domain.PlayerAction{}, err
-		}
-	}
-
-	entity, ok, err := s.entityByID(ctx, userID, entityID)
-	if err != nil {
-		return domain.PlayerAction{}, err
-	}
-	if !ok || !isHarvestableEntity(entity) || !isAdjacentToEntity(domain.Point{X: player.X, Y: player.Y}, entity) {
-		return domain.PlayerAction{}, ErrInvalidHarvestTarget
-	}
-
-	skillKey := harvestSkillKey(entity)
-	currentLevel := int64(0)
-	if s.skills != nil && skillKey != "" {
-		skills, err := s.skills.ListSkills(ctx, userID)
+	var created domain.PlayerAction
+	err := s.withWriteStores(ctx, func(stores store.Stores) error {
+		activeAction, err := stores.Actions.GetActiveAction(ctx, userID)
 		if err != nil {
-			return domain.PlayerAction{}, err
+			return err
 		}
-		for _, skill := range skills {
-			if skill.SkillKey == skillKey {
-				currentLevel = int64(skill.Level)
-				break
+		if activeAction != nil {
+			return ErrActionInProgress
+		}
+
+		player, err := stores.Players.GetPlayer(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if movement := player.Movement; movement != nil {
+			if now.Before(movement.ArrivesAt) {
+				return ErrPlayerIsMoving
+			}
+			player.X = movement.TargetX
+			player.Y = movement.TargetY
+			player.Movement = nil
+			if _, err := stores.Players.SavePlayer(ctx, player); err != nil {
+				return err
 			}
 		}
-		if currentLevel == 0 {
-			currentLevel = 1
+
+		entity, ok, err := s.entityByID(ctx, stores.Entities, userID, entityID)
+		if err != nil {
+			return err
 		}
-	}
-	if currentLevel < requiredLevelForEntity(entity) {
-		return domain.PlayerAction{}, ErrInsufficientLevel
-	}
+		if !ok || !isHarvestableEntity(entity) || !isAdjacentToEntity(domain.Point{X: player.X, Y: player.Y}, entity) {
+			return ErrInvalidHarvestTarget
+		}
 
-	tickInterval := harvestTickInterval(currentLevel, requiredLevelForEntity(entity))
-	harvestDuration := harvestDurationForEntity(entity)
+		skillKey := harvestSkillKey(entity)
+		currentLevel := int64(0)
+		if stores.Skills != nil && skillKey != "" {
+			skills, err := stores.Skills.ListSkills(ctx, userID)
+			if err != nil {
+				return err
+			}
+			for _, skill := range skills {
+				if skill.SkillKey == skillKey {
+					currentLevel = int64(skill.Level)
+					break
+				}
+			}
+			if currentLevel == 0 {
+				currentLevel = 1
+			}
+		}
+		requiredLevel := requiredLevelForEntity(entity)
+		if currentLevel < requiredLevel {
+			return ErrInsufficientLevel
+		}
 
-	action := domain.PlayerAction{
-		ID:             uuid.New(),
-		UserID:         userID,
-		Type:           harvestActionType,
-		EntityID:       &entityID,
-		Status:         "active",
-		StartedAt:      now,
-		EndsAt:         now.Add(harvestDuration),
-		NextTickAt:     now.Add(tickInterval),
-		TickIntervalMs: int(tickInterval / time.Millisecond),
-		Metadata: map[string]any{
-			"resource_key":             entity.ResourceKey,
-			"reward_item_key":          harvestRewardItemKey(entity),
-			"reward_quantity":          harvestRewardQuantity(entity),
-			"success_chance":           harvestSuccessChance(entity),
-			"skill_key":                skillKey,
-			"xp_per_reward":            harvestXPPerReward(entity),
-			"ticks_processed":          0,
-			"rewards_granted":          0,
-			"xp_granted":               0,
-			"current_level":            currentLevel,
-			"duration_seconds":         harvestDuration.Seconds(),
-			"harvest_duration_seconds": int64(harvestDuration / time.Second),
-			"required_level":           requiredLevelForEntity(entity),
-		},
-	}
-	return s.actions.CreateAction(ctx, action)
+		tickInterval := harvestTickInterval(currentLevel, requiredLevel)
+		harvestDuration := harvestDurationForEntity(entity)
+		created = domain.PlayerAction{
+			ID:             uuid.New(),
+			UserID:         userID,
+			Type:           harvestActionType,
+			EntityID:       &entityID,
+			Status:         "active",
+			StartedAt:      now,
+			EndsAt:         now.Add(harvestDuration),
+			NextTickAt:     minTime(now.Add(tickInterval), now.Add(harvestDuration)),
+			TickIntervalMs: int(tickInterval / time.Millisecond),
+			Metadata: map[string]any{
+				"resource_key":             entity.ResourceKey,
+				"reward_item_key":          harvestRewardItemKey(entity),
+				"reward_quantity":          harvestRewardQuantity(entity),
+				"success_chance":           harvestSuccessChance(entity),
+				"skill_key":                skillKey,
+				"xp_per_reward":            harvestXPPerReward(entity),
+				"ticks_processed":          0,
+				"rewards_granted":          0,
+				"xp_granted":               0,
+				"current_level":            currentLevel,
+				"duration_seconds":         harvestDuration.Seconds(),
+				"harvest_duration_seconds": int64(harvestDuration / time.Second),
+				"required_level":           requiredLevel,
+			},
+		}
+		created, err = stores.Actions.CreateAction(ctx, created)
+		if err != nil {
+			return err
+		}
+		return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(created, "action.started", now)})
+	})
+	return created, err
 }
 
 func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error) {
-	action, err := s.actions.GetActiveAction(ctx, userID)
-	if err != nil || action == nil {
-		return action, err
-	}
-	if action.Type != harvestActionType {
-		return action, nil
+	return s.actions.GetActiveAction(ctx, userID)
+}
+
+func (s *ActionService) ProcessDue(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 1
 	}
 
+	processed := 0
+	for processed < limit {
+		handled, err := s.processNextDue(ctx)
+		if err != nil {
+			return processed, err
+		}
+		if !handled {
+			return processed, nil
+		}
+		processed++
+	}
+	return processed, nil
+}
+
+func (s *ActionService) processNextDue(ctx context.Context) (bool, error) {
 	now := s.now()
-	if now.Before(action.NextTickAt) && now.Before(action.EndsAt) {
-		return action, nil
+	if s.transactor != nil {
+		handled := false
+		err := s.transactor.WithinTx(ctx, func(stores store.Stores) error {
+			action, err := stores.Actions.ClaimNextDueAction(ctx, now)
+			if err != nil {
+				return err
+			}
+			if action == nil {
+				return nil
+			}
+			handled = true
+			return s.advanceAction(ctx, stores, action, now)
+		})
+		return handled, err
+	}
+
+	action, err := s.actions.ClaimNextDueAction(ctx, now)
+	if err != nil {
+		return false, err
+	}
+	if action == nil {
+		return false, nil
+	}
+	return true, s.advanceAction(ctx, s.baseStores(), action, now)
+}
+
+func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, action *domain.PlayerAction, now time.Time) error {
+	if action == nil {
+		return nil
+	}
+	if action.Type != harvestActionType {
+		if !now.Before(action.EndsAt) {
+			action.Status = "completed"
+			if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
+				return err
+			}
+			return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.completed", now)})
+		}
+		return nil
 	}
 
 	itemKey := stringMetadata(action.Metadata, "reward_item_key", defaultHarvestRewardItemKey)
@@ -183,18 +258,20 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	xpGranted := int64Metadata(action.Metadata, "xp_granted", 0)
 	levelUps := int64Metadata(action.Metadata, "level_ups", 0)
 	currentLevel := int64Metadata(action.Metadata, "current_level", 0)
+	startingLevel := currentLevel
+
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
 		if randomUnitFloat() < successChance {
-			addedQuantity, err := s.inventory.AddInventoryItem(ctx, userID, itemKey, rewardQuantity)
+			addedQuantity, err := stores.Inventory.AddInventoryItem(ctx, action.UserID, itemKey, rewardQuantity)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			rewardsGranted += addedQuantity
-			if addedQuantity > 0 && s.skills != nil && skillKey != "" && xpPerReward > 0 {
-				skill, err := s.skills.AddXP(ctx, userID, skillKey, xpPerReward*addedQuantity)
+			if addedQuantity > 0 && stores.Skills != nil && skillKey != "" && xpPerReward > 0 {
+				skill, err := stores.Skills.AddXP(ctx, action.UserID, skillKey, xpPerReward*addedQuantity)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				xpGranted += xpPerReward * addedQuantity
 				if currentLevel > 0 && int64(skill.Level) > currentLevel {
@@ -203,7 +280,10 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 				currentLevel = int64(skill.Level)
 			}
 		}
-		action.NextTickAt = action.NextTickAt.Add(tickInterval)
+		if !action.NextTickAt.Before(action.EndsAt) {
+			break
+		}
+		action.NextTickAt = minTime(action.NextTickAt.Add(tickInterval), action.EndsAt)
 	}
 
 	action.Metadata["ticks_processed"] = ticksProcessed
@@ -213,33 +293,63 @@ func (s *ActionService) Resolve(ctx context.Context, userID uuid.UUID) (*domain.
 	if currentLevel > 0 {
 		action.Metadata["current_level"] = currentLevel
 	}
+
+	emitted := []domain.PlayerEvent{}
+	if currentLevel > startingLevel && skillKey != "" {
+		emitted = append(emitted, s.newSkillLevelUpEvent(*action, skillKey, startingLevel, currentLevel, now))
+	}
+
 	if !now.Before(action.EndsAt) {
 		action.Status = "completed"
-		if action.EntityID != nil && s.entities != nil {
-			entity, ok, err := s.entityByID(ctx, userID, *action.EntityID)
+		if action.EntityID != nil && stores.Entities != nil {
+			entity, ok, err := s.entityByID(ctx, stores.Entities, action.UserID, *action.EntityID)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if ok && entity.State != resourceStateDepleted {
-				if _, err := depleteResourceNode(ctx, s.entities, entity, now); err != nil {
-					return nil, err
+				if entity, err = depleteResourceNode(ctx, stores.Entities, entity, now); err != nil {
+					return err
 				}
+				emitted = append(emitted, s.newResourceEvent(*action, entity, "resource.depleted", now))
 			}
 		}
+		emitted = append(emitted, s.newActionEvent(*action, "action.completed", now))
 	}
 
-	saved, err := s.actions.SaveAction(ctx, *action)
-	if err != nil {
-		return nil, err
+	if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
+		return err
 	}
-	if saved.Status != "active" {
-		return nil, nil
-	}
-	return &saved, nil
+	return s.appendEvents(ctx, stores, emitted)
 }
 
-func (s *ActionService) entityByID(ctx context.Context, userID uuid.UUID, entityID uuid.UUID) (domain.Entity, bool, error) {
-	entities, err := s.entities.ListEntities(ctx, userID)
+func (s *ActionService) appendEvents(ctx context.Context, stores store.Stores, events []domain.PlayerEvent) error {
+	if len(events) == 0 || stores.Events == nil {
+		return nil
+	}
+	_, err := stores.Events.AppendEvents(ctx, events)
+	return err
+}
+
+func (s *ActionService) withWriteStores(ctx context.Context, fn func(store.Stores) error) error {
+	if s.transactor != nil {
+		return s.transactor.WithinTx(ctx, fn)
+	}
+	return fn(s.baseStores())
+}
+
+func (s *ActionService) baseStores() store.Stores {
+	return store.Stores{
+		Actions:   s.actions,
+		Entities:  s.entities,
+		Events:    s.events,
+		Inventory: s.inventory,
+		Players:   s.players,
+		Skills:    s.skills,
+	}
+}
+
+func (s *ActionService) entityByID(ctx context.Context, entityStore store.EntityStore, userID uuid.UUID, entityID uuid.UUID) (domain.Entity, bool, error) {
+	entities, err := entityStore.ListEntities(ctx, userID)
 	if err != nil {
 		return domain.Entity{}, false, err
 	}
@@ -249,6 +359,67 @@ func (s *ActionService) entityByID(ctx context.Context, userID uuid.UUID, entity
 		}
 	}
 	return domain.Entity{}, false, nil
+}
+
+func (s *ActionService) newActionEvent(action domain.PlayerAction, eventType string, now time.Time) domain.PlayerEvent {
+	aggregateID := action.ID
+	payload := map[string]any{
+		"action_id":        action.ID,
+		"action_type":      action.Type,
+		"status":           action.Status,
+		"entity_id":        action.EntityID,
+		"resource_key":     stringMetadata(action.Metadata, "resource_key", ""),
+		"started_at":       action.StartedAt,
+		"ends_at":          action.EndsAt,
+		"next_tick_at":     action.NextTickAt,
+		"rewards_granted":  int64Metadata(action.Metadata, "rewards_granted", 0),
+		"xp_granted":       int64Metadata(action.Metadata, "xp_granted", 0),
+		"level_ups":        int64Metadata(action.Metadata, "level_ups", 0),
+		"current_level":    int64Metadata(action.Metadata, "current_level", 0),
+		"occurred_at":      now,
+		"action_metadata":  cloneMetadata(action.Metadata),
+		"tick_interval_ms": action.TickIntervalMs,
+	}
+	return domain.PlayerEvent{
+		UserID:        action.UserID,
+		AggregateType: "action",
+		AggregateID:   &aggregateID,
+		EventType:     eventType,
+		Payload:       payload,
+	}
+}
+
+func (s *ActionService) newResourceEvent(action domain.PlayerAction, entity domain.Entity, eventType string, now time.Time) domain.PlayerEvent {
+	aggregateID := entity.ID
+	return domain.PlayerEvent{
+		UserID:        action.UserID,
+		AggregateType: "entity",
+		AggregateID:   &aggregateID,
+		EventType:     eventType,
+		Payload: map[string]any{
+			"action_id":    action.ID,
+			"entity_id":    entity.ID,
+			"resource_key": entity.ResourceKey,
+			"state":        entity.State,
+			"occurred_at":  now,
+		},
+	}
+}
+
+func (s *ActionService) newSkillLevelUpEvent(action domain.PlayerAction, skillKey string, fromLevel int64, toLevel int64, now time.Time) domain.PlayerEvent {
+	return domain.PlayerEvent{
+		UserID:        action.UserID,
+		AggregateType: "skill",
+		EventType:     "skill.level_up",
+		Payload: map[string]any{
+			"action_id":     action.ID,
+			"skill_key":     skillKey,
+			"from_level":    fromLevel,
+			"to_level":      toLevel,
+			"levels_gained": toLevel - fromLevel,
+			"occurred_at":   now,
+		},
+	}
 }
 
 func isHarvestableEntity(entity domain.Entity) bool {
@@ -308,6 +479,24 @@ func harvestTickInterval(currentLevel int64, requiredLevel int64) time.Duration 
 		return minHarvestTickInterval
 	}
 	return interval
+}
+
+func minTime(a time.Time, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func cloneMetadata(metadata map[string]any) map[string]any {
+	if metadata == nil {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func stringMetadata(metadata map[string]any, key string, fallback string) string {

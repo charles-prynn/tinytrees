@@ -1,9 +1,10 @@
 part of '../../game_hud.dart';
 
 class InventoryGrid extends StatelessWidget {
-  const InventoryGrid({super.key, required this.items});
+  const InventoryGrid({super.key, required this.items, this.onItemTap});
 
   final List<InventoryItem> items;
+  final ValueChanged<InventoryItem>? onItemTap;
 
   @override
   Widget build(BuildContext context) {
@@ -16,6 +17,10 @@ class InventoryGrid extends StatelessWidget {
             padding: EdgeInsets.only(right: index == 7 ? 0 : 5),
             child: InventorySlot(
               item: index < visibleItems.length ? visibleItems[index] : null,
+              onTap:
+                  index < visibleItems.length && onItemTap != null
+                      ? () => onItemTap!(visibleItems[index])
+                      : null,
             ),
           ),
         ),

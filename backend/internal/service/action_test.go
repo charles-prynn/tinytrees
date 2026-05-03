@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestActionServiceResolveAwardsInventoryAndSkillXP(t *testing.T) {
+func TestActionServiceProcessDueAwardsInventoryAndSkillXP(t *testing.T) {
 	userID := uuid.New()
 	startedAt := time.Date(2026, time.April, 24, 10, 0, 0, 0, time.UTC)
 	action := domain.PlayerAction{
@@ -37,12 +37,12 @@ func TestActionServiceResolveAwardsInventoryAndSkillXP(t *testing.T) {
 	service := NewActionService(actions, inventory, skills, nil, nil)
 	service.now = func() time.Time { return startedAt.Add(1500 * time.Millisecond) }
 
-	resolved, err := service.Resolve(context.Background(), userID)
+	processed, err := service.ProcessDue(context.Background(), 1)
 	if err != nil {
-		t.Fatalf("Resolve returned error: %v", err)
+		t.Fatalf("ProcessDue returned error: %v", err)
 	}
-	if resolved == nil {
-		t.Fatal("expected active action")
+	if processed != 1 {
+		t.Fatalf("expected 1 processed action, got %d", processed)
 	}
 	if got := inventory.items["wood"]; got != 1 {
 		t.Fatalf("expected 1 wood reward, got %d", got)
@@ -55,15 +55,15 @@ func TestActionServiceResolveAwardsInventoryAndSkillXP(t *testing.T) {
 	if skill.Level != 1 {
 		t.Fatalf("expected level 1 at 25 xp, got %d", skill.Level)
 	}
-	if got := int64Metadata(resolved.Metadata, "xp_granted", 0); got != 25 {
+	if got := int64Metadata(actions.active.Metadata, "xp_granted", 0); got != 25 {
 		t.Fatalf("expected action metadata xp_granted=25, got %d", got)
 	}
-	if got := int64Metadata(resolved.Metadata, "current_level", 0); got != 1 {
+	if got := int64Metadata(actions.active.Metadata, "current_level", 0); got != 1 {
 		t.Fatalf("expected action metadata current_level=1, got %d", got)
 	}
 }
 
-func TestActionServiceResolveRespectsInventorySlotLimit(t *testing.T) {
+func TestActionServiceProcessDueRespectsInventorySlotLimit(t *testing.T) {
 	userID := uuid.New()
 	startedAt := time.Date(2026, time.April, 24, 10, 0, 0, 0, time.UTC)
 	action := domain.PlayerAction{
@@ -92,20 +92,20 @@ func TestActionServiceResolveRespectsInventorySlotLimit(t *testing.T) {
 	service := NewActionService(actions, inventory, skills, nil, nil)
 	service.now = func() time.Time { return startedAt.Add(1500 * time.Millisecond) }
 
-	resolved, err := service.Resolve(context.Background(), userID)
+	processed, err := service.ProcessDue(context.Background(), 1)
 	if err != nil {
-		t.Fatalf("Resolve returned error: %v", err)
+		t.Fatalf("ProcessDue returned error: %v", err)
 	}
-	if resolved == nil {
-		t.Fatal("expected active action")
+	if processed != 1 {
+		t.Fatalf("expected 1 processed action, got %d", processed)
 	}
 	if got := inventory.items["wood"]; got != domain.InventorySlotLimit {
 		t.Fatalf("expected inventory to cap at %d, got %d", domain.InventorySlotLimit, got)
 	}
-	if got := int64Metadata(resolved.Metadata, "rewards_granted", 0); got != 2 {
+	if got := int64Metadata(actions.active.Metadata, "rewards_granted", 0); got != 2 {
 		t.Fatalf("expected 2 rewards granted after cap, got %d", got)
 	}
-	if got := int64Metadata(resolved.Metadata, "xp_granted", 0); got != 50 {
+	if got := int64Metadata(actions.active.Metadata, "xp_granted", 0); got != 50 {
 		t.Fatalf("expected xp_granted to match accepted items, got %d", got)
 	}
 }
@@ -221,7 +221,71 @@ func TestActionServiceStartHarvestUsesTreeHarvestDuration(t *testing.T) {
 	}
 }
 
-func TestActionServiceResolveDepletesTreeWhenHarvestDurationEnds(t *testing.T) {
+func TestActionServiceStartHarvestEmitsStartedEvent(t *testing.T) {
+	userID := uuid.New()
+	now := time.Date(2026, time.April, 28, 12, 0, 0, 0, time.UTC)
+	entityID := uuid.New()
+	events := &memoryEvents{}
+
+	service := NewActionService(
+		&memoryActions{},
+		&memoryInventory{},
+		&memorySkills{
+			skills: map[string]domain.PlayerSkill{
+				"woodcutting": {
+					UserID:   userID,
+					SkillKey: "woodcutting",
+					Level:    15,
+				},
+			},
+		},
+		&memoryPlayerStore{
+			player: domain.Player{UserID: userID, X: 9, Y: 9},
+		},
+		&memoryEntities{
+			items: []domain.Entity{
+				{
+					ID:          entityID,
+					UserID:      userID,
+					Name:        "Oak Tree",
+					Type:        "resource",
+					ResourceKey: "oak_tree",
+					X:           10,
+					Y:           10,
+					Width:       1,
+					Height:      1,
+					State:       resourceStateIdle,
+					Metadata: map[string]any{
+						"reward_item_key": "oak_logs",
+						"reward_quantity": int64(1),
+						"skill_key":       "woodcutting",
+						"xp_per_reward":   int64(38),
+						"required_level":  int64(15),
+					},
+				},
+			},
+		},
+	)
+	service.SetEventStore(events)
+	service.now = func() time.Time { return now }
+
+	action, err := service.StartHarvest(context.Background(), userID, entityID)
+	if err != nil {
+		t.Fatalf("StartHarvest returned error: %v", err)
+	}
+	if len(events.events) != 1 {
+		t.Fatalf("expected 1 emitted event, got %d", len(events.events))
+	}
+	event := events.events[0]
+	if event.EventType != "action.started" {
+		t.Fatalf("expected action.started event, got %q", event.EventType)
+	}
+	if event.AggregateID == nil || *event.AggregateID != action.ID {
+		t.Fatalf("expected event aggregate_id %s, got %#v", action.ID, event.AggregateID)
+	}
+}
+
+func TestActionServiceProcessDueDepletesTreeWhenHarvestDurationEnds(t *testing.T) {
 	userID := uuid.New()
 	entityID := uuid.New()
 	startedAt := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
@@ -265,18 +329,86 @@ func TestActionServiceResolveDepletesTreeWhenHarvestDurationEnds(t *testing.T) {
 	service := NewActionService(actions, &memoryInventory{}, &memorySkills{}, nil, entities)
 	service.now = func() time.Time { return startedAt.Add(time.Second) }
 
-	resolved, err := service.Resolve(context.Background(), userID)
+	processed, err := service.ProcessDue(context.Background(), 1)
 	if err != nil {
-		t.Fatalf("Resolve returned error: %v", err)
+		t.Fatalf("ProcessDue returned error: %v", err)
 	}
-	if resolved != nil {
-		t.Fatalf("expected completed action to resolve to nil, got %#v", resolved)
+	if processed != 1 {
+		t.Fatalf("expected 1 processed action, got %d", processed)
+	}
+	if actions.active == nil || actions.active.Status != "completed" {
+		t.Fatalf("expected action to be completed, got %#v", actions.active)
 	}
 	if entities.items[0].State != resourceStateDepleted {
 		t.Fatalf("expected entity to be depleted, got %q", entities.items[0].State)
 	}
 	if _, ok := entities.items[0].Metadata["stump_expires_at"]; !ok {
 		t.Fatal("expected stump_expires_at metadata to be set")
+	}
+}
+
+func TestActionServiceProcessDueEmitsCompletionEvents(t *testing.T) {
+	userID := uuid.New()
+	entityID := uuid.New()
+	startedAt := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
+	events := &memoryEvents{}
+	action := domain.PlayerAction{
+		ID:             uuid.New(),
+		UserID:         userID,
+		Type:           harvestActionType,
+		EntityID:       &entityID,
+		Status:         "active",
+		StartedAt:      startedAt,
+		EndsAt:         startedAt.Add(time.Second),
+		NextTickAt:     startedAt.Add(time.Second),
+		TickIntervalMs: 1000,
+		Metadata: map[string]any{
+			"resource_key":    "oak_tree",
+			"reward_item_key": "oak_logs",
+			"reward_quantity": int64(1),
+			"success_chance":  1.0,
+			"skill_key":       "woodcutting",
+			"xp_per_reward":   int64(38),
+			"current_level":   int64(1),
+		},
+	}
+	entities := &memoryEntities{
+		items: []domain.Entity{
+			{
+				ID:          entityID,
+				UserID:      userID,
+				Name:        "Oak Tree",
+				Type:        "resource",
+				ResourceKey: "oak_tree",
+				X:           10,
+				Y:           10,
+				Width:       1,
+				Height:      1,
+				State:       resourceStateIdle,
+				Metadata:    map[string]any{},
+			},
+		},
+	}
+
+	service := NewActionService(&memoryActions{active: &action}, &memoryInventory{}, &memorySkills{}, nil, entities)
+	service.SetEventStore(events)
+	service.now = func() time.Time { return startedAt.Add(time.Second) }
+
+	processed, err := service.ProcessDue(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ProcessDue returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed action, got %d", processed)
+	}
+	if len(events.events) != 2 {
+		t.Fatalf("expected 2 emitted events, got %d", len(events.events))
+	}
+	if events.events[0].EventType != "resource.depleted" {
+		t.Fatalf("expected first event resource.depleted, got %q", events.events[0].EventType)
+	}
+	if events.events[1].EventType != "action.completed" {
+		t.Fatalf("expected second event action.completed, got %q", events.events[1].EventType)
 	}
 }
 
@@ -307,6 +439,24 @@ func (m *memoryActions) CreateAction(_ context.Context, action domain.PlayerActi
 func (m *memoryActions) SaveAction(_ context.Context, action domain.PlayerAction) (domain.PlayerAction, error) {
 	m.active = &action
 	return action, nil
+}
+
+func (m *memoryActions) ClaimNextDueAction(_ context.Context, now time.Time) (*domain.PlayerAction, error) {
+	if m.active == nil || m.active.Status != "active" {
+		return nil, nil
+	}
+	if now.Before(m.active.NextTickAt) && now.Before(m.active.EndsAt) {
+		return nil, nil
+	}
+	action := *m.active
+	if action.Metadata != nil {
+		copyMetadata := make(map[string]any, len(action.Metadata))
+		for key, value := range action.Metadata {
+			copyMetadata[key] = value
+		}
+		action.Metadata = copyMetadata
+	}
+	return &action, nil
 }
 
 type memoryInventory struct {
@@ -356,4 +506,32 @@ func (m *memorySkills) AddXP(_ context.Context, userID uuid.UUID, skillKey strin
 	}
 	m.skills[skillKey] = skill
 	return skill, nil
+}
+
+type memoryEvents struct {
+	events []domain.PlayerEvent
+}
+
+func (m *memoryEvents) ListEvents(_ context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error) {
+	result := []domain.PlayerEvent{}
+	for _, event := range m.events {
+		if event.UserID != userID || event.ID <= afterID {
+			continue
+		}
+		result = append(result, event)
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (m *memoryEvents) AppendEvents(_ context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error) {
+	appended := make([]domain.PlayerEvent, 0, len(events))
+	for _, event := range events {
+		event.ID = int64(len(m.events) + 1)
+		m.events = append(m.events, event)
+		appended = append(appended, event)
+	}
+	return appended, nil
 }

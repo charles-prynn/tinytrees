@@ -23,6 +23,7 @@ func TestHealthRouteIsMounted(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	response := httptest.NewRecorder()
@@ -54,6 +55,7 @@ func TestAdminRoutesRequireSharedSecret(t *testing.T) {
 	router := NewRouter(
 		config.Config{AdminSecret: "topsecret"},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
 		nil,
 		nil,
 		nil,

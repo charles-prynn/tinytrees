@@ -198,6 +198,15 @@ type actionDTO struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
+type eventDTO struct {
+	ID            int64          `json:"id"`
+	AggregateType string         `json:"aggregate_type"`
+	AggregateID   *string        `json:"aggregate_id,omitempty"`
+	EventType     string         `json:"event_type"`
+	Payload       map[string]any `json:"payload"`
+	CreatedAt     time.Time      `json:"created_at"`
+}
+
 type inventoryItemDTO struct {
 	ItemKey   string    `json:"item_key"`
 	Quantity  int64     `json:"quantity"`
@@ -495,6 +504,30 @@ func toActionDTO(action *domain.PlayerAction) *actionDTO {
 		TickIntervalMs: action.TickIntervalMs,
 		Metadata:       action.Metadata,
 		UpdatedAt:      action.UpdatedAt,
+	}
+}
+
+func toEventDTOs(events []domain.PlayerEvent) []eventDTO {
+	result := make([]eventDTO, 0, len(events))
+	for _, event := range events {
+		result = append(result, toEventDTO(event))
+	}
+	return result
+}
+
+func toEventDTO(event domain.PlayerEvent) eventDTO {
+	var aggregateID *string
+	if event.AggregateID != nil {
+		value := event.AggregateID.String()
+		aggregateID = &value
+	}
+	return eventDTO{
+		ID:            event.ID,
+		AggregateType: event.AggregateType,
+		AggregateID:   aggregateID,
+		EventType:     event.EventType,
+		Payload:       event.Payload,
+		CreatedAt:     event.CreatedAt,
 	}
 }
 

@@ -25,6 +25,8 @@ const _playerHeadBodyRollResponse = 0.25;
 const _playerLeftLegStanceRoll = -0.05;
 const _playerRightLegStanceRoll = 0.05;
 const _playerDefaultShadowHeightTiles = 0.2;
+const _playerHeadRoundedTopScale = 0.72;
+const _playerHeadRoundedTopHeightFactor = 0.42;
 const _playerLowPolyModel = _PlayerModelSpec(
   torso: _PlayerPrismSpec(
     center: _PlayerModelVector3(0, 1.74, 0),
@@ -139,9 +141,11 @@ void _drawLowPolyPlayer({
     footY: footY,
     unit: unit,
   );
-  _appendPrismFaces(
+  _appendRoundedTopPrismFaces(
     faces,
     prism: model.head,
+    crownScale: _playerHeadRoundedTopScale,
+    crownHeightFactor: _playerHeadRoundedTopHeightFactor,
     transforms: [rig.head, rig.root],
     footX: footX,
     footY: footY,
@@ -214,16 +218,9 @@ void _drawLowPolyPlayer({
 
   faces.sort((a, b) => b.depth.compareTo(a.depth));
   final fillPaint = Paint()..style = PaintingStyle.fill;
-  final outlinePaint =
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.2, drawTileSize * 0.028)
-        ..strokeJoin = StrokeJoin.round
-        ..color = _playerOutlineColor.withValues(alpha: 0.62);
   for (final face in faces) {
     fillPaint.color = face.color;
     canvas.drawPath(face.path, fillPaint);
-    canvas.drawPath(face.path, outlinePaint);
   }
 }
 
@@ -422,34 +419,13 @@ void _appendPrismFaces(
   required double footY,
   required double unit,
 }) {
-  final halfWidth = prism.size.x * 0.5;
   final halfHeight = prism.size.y * 0.5;
-  final halfDepth = prism.size.z * 0.5;
   final bottomY = prism.center.y - halfHeight;
   final topY = prism.center.y + halfHeight;
-  final angleStep = math.pi * 2 / prism.sides;
-  final vertices = <_PlayerModelVector3>[];
-
-  for (var index = 0; index < prism.sides; index++) {
-    final angle = prism.rotation + angleStep * index;
-    vertices.add(
-      _PlayerModelVector3(
-        prism.center.x + math.cos(angle) * halfWidth,
-        bottomY,
-        prism.center.z + math.sin(angle) * halfDepth,
-      ),
-    );
-  }
-  for (var index = 0; index < prism.sides; index++) {
-    final angle = prism.rotation + angleStep * index;
-    vertices.add(
-      _PlayerModelVector3(
-        prism.center.x + math.cos(angle) * halfWidth,
-        topY,
-        prism.center.z + math.sin(angle) * halfDepth,
-      ),
-    );
-  }
+  final vertices = [
+    ..._buildPrismRing(prism, bottomY),
+    ..._buildPrismRing(prism, topY),
+  ];
 
   final transformed = [
     for (final vertex in vertices) _applyPlayerTransforms(vertex, transforms),
@@ -498,6 +474,118 @@ void _appendPrismFaces(
       unit: unit,
     );
   }
+}
+
+void _appendRoundedTopPrismFaces(
+  List<_PlayerProjectedFace> faces, {
+  required _PlayerPrismSpec prism,
+  required double crownScale,
+  required double crownHeightFactor,
+  required List<_PlayerModelTransform> transforms,
+  required double footX,
+  required double footY,
+  required double unit,
+}) {
+  final halfHeight = prism.size.y * 0.5;
+  final bottomY = prism.center.y - halfHeight;
+  final topY = prism.center.y + halfHeight;
+  final crownHeight = prism.size.y * crownHeightFactor;
+  final crownBaseY = topY - crownHeight;
+  final crownUpperY = topY - crownHeight * 0.28;
+  final bottomRing = _buildPrismRing(prism, bottomY);
+  final crownBaseRing = _buildPrismRing(prism, crownBaseY);
+  final crownUpperRing = _buildPrismRing(prism, crownUpperY, scale: crownScale);
+  final apex = _PlayerModelVector3(prism.center.x, topY, prism.center.z);
+  final transformedBottomRing = [
+    for (final vertex in bottomRing) _applyPlayerTransforms(vertex, transforms),
+  ];
+  final transformedCrownBaseRing = [
+    for (final vertex in crownBaseRing)
+      _applyPlayerTransforms(vertex, transforms),
+  ];
+  final transformedCrownUpperRing = [
+    for (final vertex in crownUpperRing)
+      _applyPlayerTransforms(vertex, transforms),
+  ];
+  final transformedApex = _applyPlayerTransforms(apex, transforms);
+  final transformedCenter = _applyPlayerTransforms(prism.center, transforms);
+
+  _appendProjectedFace(
+    faces,
+    vertices: transformedBottomRing.reversed.toList(),
+    shapeCenter: transformedCenter,
+    color: prism.color,
+    footX: footX,
+    footY: footY,
+    unit: unit,
+  );
+
+  for (var index = 0; index < prism.sides; index++) {
+    final nextIndex = (index + 1) % prism.sides;
+    _appendProjectedFace(
+      faces,
+      vertices: [
+        transformedBottomRing[index],
+        transformedBottomRing[nextIndex],
+        transformedCrownBaseRing[nextIndex],
+        transformedCrownBaseRing[index],
+      ],
+      shapeCenter: transformedCenter,
+      color: prism.color,
+      footX: footX,
+      footY: footY,
+      unit: unit,
+    );
+    _appendProjectedFace(
+      faces,
+      vertices: [
+        transformedCrownBaseRing[index],
+        transformedCrownBaseRing[nextIndex],
+        transformedCrownUpperRing[nextIndex],
+        transformedCrownUpperRing[index],
+      ],
+      shapeCenter: transformedCenter,
+      color: prism.color,
+      footX: footX,
+      footY: footY,
+      unit: unit,
+    );
+    _appendProjectedFace(
+      faces,
+      vertices: [
+        transformedCrownUpperRing[index],
+        transformedCrownUpperRing[nextIndex],
+        transformedApex,
+      ],
+      shapeCenter: transformedCenter,
+      color: prism.color,
+      footX: footX,
+      footY: footY,
+      unit: unit,
+    );
+  }
+}
+
+List<_PlayerModelVector3> _buildPrismRing(
+  _PlayerPrismSpec prism,
+  double y, {
+  double scale = 1,
+}) {
+  final halfWidth = prism.size.x * 0.5 * scale;
+  final halfDepth = prism.size.z * 0.5 * scale;
+  final angleStep = math.pi * 2 / prism.sides;
+  final ring = <_PlayerModelVector3>[];
+  for (var index = 0; index < prism.sides; index++) {
+    final angle = prism.rotation + angleStep * index;
+    ring.add(
+      _PlayerModelVector3(
+        prism.center.x + math.cos(angle) * halfWidth,
+        y,
+        prism.center.z + math.sin(angle) * halfDepth,
+      ),
+    );
+  }
+  return ring;
 }
 
 void _appendProjectedFace(

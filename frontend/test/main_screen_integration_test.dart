@@ -21,6 +21,7 @@ import 'package:treescape/features/player/application/player_controller.dart';
 import 'package:treescape/features/player/data/player_repository.dart';
 import 'package:treescape/features/player/domain/player_state.dart';
 import 'package:treescape/features/shared/main_screen.dart';
+import 'package:treescape/features/shared/widgets/game_hud.dart';
 import 'package:treescape/features/state/data/state_repository.dart';
 import 'package:treescape/features/state/domain/state_snapshot.dart';
 
@@ -203,6 +204,71 @@ void main() {
     expect(find.text('Cancel'), findsOneWidget);
     expect(find.text('Login'), findsWidgets);
   });
+
+  testWidgets(
+    'bank mode keeps the inventory drawer open and shows bank contents in the center',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      const bankItems = [
+        InventoryItem(itemKey: 'oak_log', quantity: 64, updatedAt: null),
+      ];
+
+      InventoryItem? tappedItem;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(() => _FakeAuthController()),
+            playerStateProvider.overrideWith((ref) async => _playerState()),
+            inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
+            bankProvider.overrideWith((ref) => Stream.value(bankItems)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: GameHud(
+                inventoryOpen: true,
+                bankOpen: true,
+                loginOpen: false,
+                registrationOpen: false,
+                minimapVisible: false,
+                useLowPolyPlayer: false,
+                showCoordinateDebug: false,
+                selectedMinimapTile: null,
+                onMinimapTileSelected: (_) {},
+                onInventoryPressed: () {},
+                onInventoryClosed: () {},
+                onBankClosed: () {},
+                onInventoryItemTap: (item) => tappedItem = item,
+                onPlayerRenderModeToggle: () {},
+                onLoginPressed: () {},
+                onLoginClosed: () {},
+                onRegistrationPressed: () {},
+                onRegistrationClosed: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('inventory-drawer')), findsOneWidget);
+      expect(find.byKey(const ValueKey('bank-panel')), findsOneWidget);
+      expect(find.text('Stored items'), findsOneWidget);
+      expect(find.text('oak log'), findsOneWidget);
+      expect(find.text('x64'), findsOneWidget);
+
+      await tester.tap(find.text('x12'));
+      await tester.pump();
+
+      expect(tappedItem?.itemKey, 'wood');
+      expect(tappedItem?.quantity, 12);
+    },
+  );
 
   testWidgets('HUD username updates when auth session changes', (tester) async {
     tester.view.physicalSize = const Size(1600, 900);

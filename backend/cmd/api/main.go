@@ -46,6 +46,7 @@ func run(log interface {
 	defer pool.Close()
 
 	stores := store.NewPostgresStores(pool).Interfaces()
+	transactor := store.NewPostgresTransactor(pool)
 	tokenManager := auth.NewTokenManager(cfg.AccessTokenSecret, cfg.RefreshTokenSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	authService := service.NewAuthService(stores.Users, stores.Sessions, tokenManager)
 	stateService := service.NewStateService(stores.State)
@@ -53,8 +54,11 @@ func run(log interface {
 	entityService := service.NewEntityService(stores.Entities)
 	playerService := service.NewPlayerService(stores.Players, stores.Maps, stores.Entities, stores.Skills)
 	actionService := service.NewActionService(stores.Actions, stores.Inventory, stores.Skills, stores.Players, stores.Entities)
+	actionService.SetTransactor(transactor)
+	actionService.SetEventStore(stores.Events)
 	playerService.SetActionService(actionService)
 	inventoryService := service.NewInventoryService(stores.Inventory, stores.Bank, stores.Players, stores.Entities, actionService)
+	eventService := service.NewEventService(stores.Events)
 	adminService := service.NewAdminService(
 		stores.Users,
 		playerService,
@@ -70,15 +74,17 @@ func run(log interface {
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           apphttp.NewRouter(cfg, logger.New(), authService, stateService, mapService, entityService, playerService, actionService, inventoryService, adminService),
+		Handler:           apphttp.NewRouter(cfg, logger.New(), authService, stateService, mapService, entityService, playerService, actionService, eventService, inventoryService, adminService),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	worker := service.NewActionWorker(actionService, 500*time.Millisecond, 32, log)
 
 	errs := make(chan error, 1)
 	go func() {
 		log.Info("api listening", "addr", server.Addr)
 		errs <- server.ListenAndServe()
 	}()
+	go worker.Run(ctx)
 
 	select {
 	case <-ctx.Done():

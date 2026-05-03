@@ -25,11 +25,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       Paint()
         ..filterQuality = FilterQuality.none
         ..isAntiAlias = false;
-  final Paint _entityBorderPaint =
-      Paint()
-        ..color = const Color(0xFFFFD54F)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
   static const _occludingTreeOpacity = 0.7;
   static const _playerRenderSmoothingSeconds = 0.36;
   static const _playerWalkAnimationDistanceThreshold = 0.06;
@@ -478,10 +473,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         offset: offset,
         viewport: viewport,
         drawTileSize: drawTileSize,
-        sourceTileSize: sourceTileSize,
-        sourceColumns: sourceColumns,
-        paint: _pixelPaint,
-        borderPaint: _entityBorderPaint,
       );
     }
 
@@ -509,10 +500,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         offset: offset,
         viewport: viewport,
         drawTileSize: drawTileSize,
-        sourceTileSize: sourceTileSize,
-        sourceColumns: sourceColumns,
-        paint: _pixelPaint,
-        borderPaint: _entityBorderPaint,
       );
     }
 
@@ -1070,10 +1057,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     required Offset offset,
     required Rect viewport,
     required double drawTileSize,
-    required int sourceTileSize,
-    required int sourceColumns,
-    required Paint paint,
-    required Paint borderPaint,
   }) {
     if (entity.isBank) {
       _drawBankChest(
@@ -1152,29 +1135,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     if (layer != _EntityRenderLayer.foreground) {
       return;
     }
-
-    final spriteGid = entity.spriteGid;
-    if (spriteGid <= 0) {
-      return;
-    }
-    final sourceIndex = spriteGid - 1;
-    final source = Rect.fromLTWH(
-      ((sourceIndex % sourceColumns) * sourceTileSize).toDouble(),
-      ((sourceIndex ~/ sourceColumns) * sourceTileSize).toDouble(),
-      sourceTileSize.toDouble(),
-      sourceTileSize.toDouble(),
-    );
-    final destination = Rect.fromLTWH(
-      offset.dx + entity.x * drawTileSize,
-      offset.dy + entity.y * drawTileSize,
-      math.max(1, entity.width) * drawTileSize,
-      math.max(1, entity.height) * drawTileSize,
-    );
-    if (!destination.overlaps(viewport)) {
-      return;
-    }
-    canvas.drawImageRect(_tileset, source, destination, paint);
-    canvas.drawRect(destination.deflate(1), borderPaint);
   }
 
   void _drawBankChest({

@@ -174,7 +174,7 @@ func ensureBankEntity(userID uuid.UUID, entities []domain.Entity) (domain.Entity
 		Name:        "Bank",
 		Type:        bankEntityType,
 		ResourceKey: bankEntityResourceKey,
-		X:           18,
+		X:           17,
 		Y:           8,
 		Width:       1,
 		Height:      1,

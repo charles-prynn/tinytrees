@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"starter/backend/internal/domain"
@@ -17,12 +18,13 @@ type Handler struct {
 	entities      *service.EntityService
 	players       *service.PlayerService
 	actions       *service.ActionService
+	events        *service.EventService
 	inventory     *service.InventoryService
 	admin         *service.AdminService
 	allowWSOrigin func(r *http.Request, origin string) bool
 }
 
-func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, inventory *service.InventoryService, admin *service.AdminService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
+func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, events *service.EventService, inventory *service.InventoryService, admin *service.AdminService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
 	return &Handler{
 		auth:          auth,
 		state:         state,
@@ -30,6 +32,7 @@ func New(auth *service.AuthService, state *service.StateService, maps *service.M
 		entities:      entities,
 		players:       players,
 		actions:       actions,
+		events:        events,
 		inventory:     inventory,
 		admin:         admin,
 		allowWSOrigin: allowWSOrigin,
@@ -267,6 +270,41 @@ func (h *Handler) CurrentAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, r, http.StatusOK, map[string]any{"action": toActionDTO(action)})
+}
+
+func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+
+	afterID := int64(0)
+	if raw := r.URL.Query().Get("after_id"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed < 0 {
+			response.Error(w, r, service.ErrValidation)
+			return
+		}
+		afterID = parsed
+	}
+
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 || parsed > 200 {
+			response.Error(w, r, service.ErrValidation)
+			return
+		}
+		limit = parsed
+	}
+
+	events, err := h.events.List(r.Context(), userID, afterID, limit)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"events": toEventDTOs(events)})
 }
 
 func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {

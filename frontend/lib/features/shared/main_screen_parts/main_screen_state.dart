@@ -17,7 +17,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   String? _holdLabel;
   int _interactionSequence = 0;
   bool _inventoryOpen = false;
-  bool _bankOpen = false;
   String? _activeBankEntityId;
   bool _loginOpen = false;
   bool _registrationOpen = false;
@@ -157,7 +156,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
               GameHud(
                 inventoryOpen: _inventoryOpen,
-                bankOpen: _bankOpen,
+                bankOpen: _activeBankEntityId != null,
                 loginOpen: _loginOpen,
                 registrationOpen: _registrationOpen,
                 minimapVisible: _minimapVisible,
@@ -167,8 +166,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 onMinimapTileSelected: _handleMinimapTileSelected,
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
-                onBankClosed: _closeBank,
-                onBankDeposit: _depositBankItem,
+                onBankClosed: _closeBankInventory,
+                onInventoryItemTap:
+                    _activeBankEntityId == null
+                        ? null
+                        : (item) => unawaited(_depositBankItem(item)),
                 onPlayerRenderModeToggle: _togglePlayerRenderMode,
                 onLoginPressed: _openLogin,
                 onLoginClosed: _closeLogin,
@@ -336,7 +338,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
 
     _interactionSequence++;
-    _closeBank();
+    _closeBankInventory();
     _game.showWalkIconAt(tile);
     final moved = await ref
         .read(playerControllerProvider.notifier)
@@ -394,20 +396,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
     setState(() {
-      if (!_inventoryOpen) {
-        _bankOpen = false;
-        _activeBankEntityId = null;
-      }
       _inventoryOpen = !_inventoryOpen;
+      _activeBankEntityId = null;
     });
   }
 
-  void _closeBank() {
-    if (!_bankOpen || !mounted) {
+  void _closeBankInventory() {
+    if (_activeBankEntityId == null || !mounted) {
       return;
     }
     setState(() {
-      _bankOpen = false;
+      _inventoryOpen = false;
       _activeBankEntityId = null;
     });
   }
@@ -417,8 +416,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return;
     }
     setState(() {
-      _inventoryOpen = false;
-      _bankOpen = true;
+      _inventoryOpen = true;
       _activeBankEntityId = entityId;
     });
   }
@@ -465,7 +463,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final sequence = ++_interactionSequence;
     final controller = ref.read(playerControllerProvider.notifier);
     if (target.kind != EntityInteractionKind.bank) {
-      _closeBank();
+      _closeBankInventory();
     }
     final moved = await controller.moveTo(x: target.tile.x, y: target.tile.y);
     if (!mounted || !moved || sequence != _interactionSequence) {
@@ -505,7 +503,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   Future<void> _moveToTile(math.Point<int> tile) async {
     _interactionSequence++;
-    _closeBank();
+    _closeBankInventory();
     _game.showWalkIconAt(tile);
     final moved = await ref
         .read(playerControllerProvider.notifier)
