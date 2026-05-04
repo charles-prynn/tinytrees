@@ -16,9 +16,9 @@ import (
 	"github.com/go-chi/cors"
 )
 
-func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthService, stateService *service.StateService, mapService *service.MapService, entityService *service.EntityService, playerService *service.PlayerService, actionService *service.ActionService, eventService *service.EventService, inventoryService *service.InventoryService, adminService *service.AdminService) http.Handler {
+func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthService, stateService *service.StateService, mapService *service.MapService, entityService *service.EntityService, playerService *service.PlayerService, actionService *service.ActionService, eventService *service.EventService, inventoryService *service.InventoryService, adminService *service.AdminService, realtime *service.RealtimeBroker) http.Handler {
 	originAllowed := allowOrigin(cfg.AllowedOrigins)
-	h := handlers.New(authService, stateService, mapService, entityService, playerService, actionService, eventService, inventoryService, adminService, originAllowed)
+	h := handlers.New(authService, stateService, mapService, entityService, playerService, actionService, eventService, inventoryService, adminService, realtime, originAllowed)
 	r := chi.NewRouter()
 
 	r.Use(chimiddleware.RequestID)
@@ -65,7 +65,8 @@ func NewRouter(cfg config.Config, log *slog.Logger, authService *service.AuthSer
 			r.Post("/player/move", h.MovePlayer)
 			r.Get("/actions/current", h.CurrentAction)
 			r.Post("/actions/harvest", h.StartHarvest)
-			r.Get("/events", h.GetEvents)
+			r.Get("/events/inbox", h.GetEventInbox)
+			r.Post("/events/inbox/ack", h.AckEventInbox)
 			r.Get("/inventory", h.GetInventory)
 			r.Get("/bank", h.GetBank)
 			r.Post("/bank/deposit", h.DepositBank)

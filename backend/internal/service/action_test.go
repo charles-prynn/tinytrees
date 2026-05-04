@@ -226,6 +226,7 @@ func TestActionServiceStartHarvestEmitsStartedEvent(t *testing.T) {
 	now := time.Date(2026, time.April, 28, 12, 0, 0, 0, time.UTC)
 	entityID := uuid.New()
 	events := &memoryEvents{}
+	outbox := &memoryActionEventOutbox{}
 
 	service := NewActionService(
 		&memoryActions{},
@@ -267,6 +268,7 @@ func TestActionServiceStartHarvestEmitsStartedEvent(t *testing.T) {
 		},
 	)
 	service.SetEventStore(events)
+	service.SetEventOutboxStore(outbox)
 	service.now = func() time.Time { return now }
 
 	action, err := service.StartHarvest(context.Background(), userID, entityID)
@@ -282,6 +284,9 @@ func TestActionServiceStartHarvestEmitsStartedEvent(t *testing.T) {
 	}
 	if event.AggregateID == nil || *event.AggregateID != action.ID {
 		t.Fatalf("expected event aggregate_id %s, got %#v", action.ID, event.AggregateID)
+	}
+	if len(outbox.deliveries) != 0 {
+		t.Fatalf("expected no inbox deliveries for action.started, got %d", len(outbox.deliveries))
 	}
 }
 
@@ -352,6 +357,7 @@ func TestActionServiceProcessDueEmitsCompletionEvents(t *testing.T) {
 	entityID := uuid.New()
 	startedAt := time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
 	events := &memoryEvents{}
+	outbox := &memoryActionEventOutbox{}
 	action := domain.PlayerAction{
 		ID:             uuid.New(),
 		UserID:         userID,
@@ -392,6 +398,7 @@ func TestActionServiceProcessDueEmitsCompletionEvents(t *testing.T) {
 
 	service := NewActionService(&memoryActions{active: &action}, &memoryInventory{}, &memorySkills{}, nil, entities)
 	service.SetEventStore(events)
+	service.SetEventOutboxStore(outbox)
 	service.now = func() time.Time { return startedAt.Add(time.Second) }
 
 	processed, err := service.ProcessDue(context.Background(), 1)
@@ -409,6 +416,12 @@ func TestActionServiceProcessDueEmitsCompletionEvents(t *testing.T) {
 	}
 	if events.events[1].EventType != "action.completed" {
 		t.Fatalf("expected second event action.completed, got %q", events.events[1].EventType)
+	}
+	if len(outbox.deliveries) != 1 {
+		t.Fatalf("expected 1 inbox delivery, got %d", len(outbox.deliveries))
+	}
+	if outbox.deliveries[0].EventID != events.events[1].ID {
+		t.Fatalf("expected inbox delivery for action.completed event %d, got %d", events.events[1].ID, outbox.deliveries[0].EventID)
 	}
 }
 
@@ -512,18 +525,13 @@ type memoryEvents struct {
 	events []domain.PlayerEvent
 }
 
-func (m *memoryEvents) ListEvents(_ context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error) {
-	result := []domain.PlayerEvent{}
+func (m *memoryEvents) GetEvent(_ context.Context, eventID int64) (domain.PlayerEvent, error) {
 	for _, event := range m.events {
-		if event.UserID != userID || event.ID <= afterID {
-			continue
-		}
-		result = append(result, event)
-		if limit > 0 && len(result) >= limit {
-			break
+		if event.ID == eventID {
+			return event, nil
 		}
 	}
-	return result, nil
+	return domain.PlayerEvent{}, nil
 }
 
 func (m *memoryEvents) AppendEvents(_ context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error) {
@@ -534,4 +542,26 @@ func (m *memoryEvents) AppendEvents(_ context.Context, events []domain.PlayerEve
 		appended = append(appended, event)
 	}
 	return appended, nil
+}
+
+type memoryActionEventOutbox struct {
+	deliveries []domain.PlayerEventDelivery
+}
+
+func (m *memoryActionEventOutbox) EnqueueDeliveries(_ context.Context, deliveries []domain.PlayerEventDelivery) ([]domain.PlayerEventDelivery, error) {
+	appended := make([]domain.PlayerEventDelivery, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		delivery.ID = int64(len(m.deliveries) + 1)
+		m.deliveries = append(m.deliveries, delivery)
+		appended = append(appended, delivery)
+	}
+	return appended, nil
+}
+
+func (m *memoryActionEventOutbox) ClaimNextPendingDelivery(_ context.Context, _ string, _ time.Time) (*domain.PlayerEventDelivery, error) {
+	return nil, nil
+}
+
+func (m *memoryActionEventOutbox) MarkDeliveryDelivered(_ context.Context, _ int64, _ time.Time) error {
+	return nil
 }

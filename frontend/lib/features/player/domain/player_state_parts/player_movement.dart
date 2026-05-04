@@ -2,6 +2,7 @@ part of '../player_state.dart';
 
 class PlayerMovement {
   const PlayerMovement({
+    required this.clientMoveId,
     required this.fromX,
     required this.fromY,
     required this.targetX,
@@ -12,6 +13,7 @@ class PlayerMovement {
     required this.speedTilesPerSecond,
   });
 
+  final String clientMoveId;
   final int fromX;
   final int fromY;
   final int targetX;
@@ -24,6 +26,7 @@ class PlayerMovement {
   factory PlayerMovement.fromJson(Map<String, dynamic> json) {
     final path = json['path'] as List<dynamic>? ?? const [];
     return PlayerMovement(
+      clientMoveId: json['client_move_id'] as String? ?? '',
       fromX: (json['from_x'] as num?)?.toInt() ?? 0,
       fromY: (json['from_y'] as num?)?.toInt() ?? 0,
       targetX: (json['target_x'] as num?)?.toInt() ?? 0,

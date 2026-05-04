@@ -53,8 +53,9 @@ type stateSyncRequest struct {
 }
 
 type playerMoveRequest struct {
-	TargetX int `json:"target_x"`
-	TargetY int `json:"target_y"`
+	TargetX      int    `json:"target_x"`
+	TargetY      int    `json:"target_y"`
+	ClientMoveID string `json:"client_move_id"`
 }
 
 type harvestRequest struct {
@@ -73,6 +74,10 @@ type bankDepositRequest struct {
 
 func (r bankDepositRequest) EntityUUID() (uuid.UUID, error) {
 	return uuid.Parse(r.EntityID)
+}
+
+type eventInboxAckRequest struct {
+	IDs []int64 `json:"ids"`
 }
 
 type adminGrantInventoryRequest struct {
@@ -163,6 +168,7 @@ type pointDTO struct {
 }
 
 type playerMovementDTO struct {
+	ClientMoveID        string     `json:"client_move_id,omitempty"`
 	FromX               int        `json:"from_x"`
 	FromY               int        `json:"from_y"`
 	TargetX             int        `json:"target_x"`
@@ -198,12 +204,16 @@ type actionDTO struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
-type eventDTO struct {
+type inboxItemDTO struct {
 	ID            int64          `json:"id"`
+	EventID       int64          `json:"event_id"`
 	AggregateType string         `json:"aggregate_type"`
 	AggregateID   *string        `json:"aggregate_id,omitempty"`
 	EventType     string         `json:"event_type"`
+	Status        string         `json:"status"`
 	Payload       map[string]any `json:"payload"`
+	DeliveredAt   time.Time      `json:"delivered_at"`
+	ReadAt        *time.Time     `json:"read_at,omitempty"`
 	CreatedAt     time.Time      `json:"created_at"`
 }
 
@@ -473,6 +483,7 @@ func toPlayerMovementDTO(movement *domain.PlayerMovement) *playerMovementDTO {
 	}
 
 	return &playerMovementDTO{
+		ClientMoveID:        movement.ClientMoveID,
 		FromX:               movement.FromX,
 		FromY:               movement.FromY,
 		TargetX:             movement.TargetX,
@@ -507,27 +518,31 @@ func toActionDTO(action *domain.PlayerAction) *actionDTO {
 	}
 }
 
-func toEventDTOs(events []domain.PlayerEvent) []eventDTO {
-	result := make([]eventDTO, 0, len(events))
-	for _, event := range events {
-		result = append(result, toEventDTO(event))
+func toInboxDTOs(items []domain.PlayerInboxItem) []inboxItemDTO {
+	result := make([]inboxItemDTO, 0, len(items))
+	for _, item := range items {
+		result = append(result, toInboxDTO(item))
 	}
 	return result
 }
 
-func toEventDTO(event domain.PlayerEvent) eventDTO {
+func toInboxDTO(item domain.PlayerInboxItem) inboxItemDTO {
 	var aggregateID *string
-	if event.AggregateID != nil {
-		value := event.AggregateID.String()
+	if item.AggregateID != nil {
+		value := item.AggregateID.String()
 		aggregateID = &value
 	}
-	return eventDTO{
-		ID:            event.ID,
-		AggregateType: event.AggregateType,
+	return inboxItemDTO{
+		ID:            item.ID,
+		EventID:       item.EventID,
+		AggregateType: item.AggregateType,
 		AggregateID:   aggregateID,
-		EventType:     event.EventType,
-		Payload:       event.Payload,
-		CreatedAt:     event.CreatedAt,
+		EventType:     item.EventType,
+		Status:        item.Status,
+		Payload:       item.Payload,
+		DeliveredAt:   item.DeliveredAt,
+		ReadAt:        item.ReadAt,
+		CreatedAt:     item.CreatedAt,
 	}
 }
 

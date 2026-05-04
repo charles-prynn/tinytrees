@@ -51,7 +51,7 @@ String activityLabel(PlayerState player) {
   if (player.action != null) {
     return 'Harvesting';
   }
-  if (player.movement != null) {
+  if (player.hasActiveMovementAt(DateTime.now().toUtc())) {
     return 'Walking';
   }
   return 'Idle';
@@ -61,7 +61,7 @@ Color activityColor(PlayerState player) {
   if (player.action != null) {
     return const Color(0xFF6FCF38);
   }
-  if (player.movement != null) {
+  if (player.hasActiveMovementAt(DateTime.now().toUtc())) {
     return const Color(0xFFE2BF63);
   }
   return const Color(0xFFE3D8C3);

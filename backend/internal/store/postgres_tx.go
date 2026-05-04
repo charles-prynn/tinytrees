@@ -29,12 +29,15 @@ func (t *PostgresTransactor) WithinTx(ctx context.Context, fn func(Stores) error
 	defer tx.Rollback(ctx)
 
 	stores := Stores{
-		Actions:   &PostgresActionTxStore{tx: tx},
-		Events:    &PostgresEventTxStore{tx: tx},
-		Entities:  &PostgresEntityTxStore{tx: tx},
-		Inventory: &PostgresInventoryTxStore{tx: tx},
-		Players:   &PostgresPlayerTxStore{tx: tx},
-		Skills:    &PostgresSkillTxStore{tx: tx},
+		Actions:     &PostgresActionTxStore{tx: tx},
+		Events:      &PostgresEventTxStore{tx: tx},
+		EventOutbox: &PostgresEventOutboxTxStore{tx: tx},
+		EventInbox:  &PostgresEventInboxTxStore{tx: tx},
+		Entities:    &PostgresEntityTxStore{tx: tx},
+		Inventory:   &PostgresInventoryTxStore{tx: tx},
+		Players:     &PostgresPlayerTxStore{tx: tx},
+		Realtime:    &PostgresRealtimeTxStore{tx: tx},
+		Skills:      &PostgresSkillTxStore{tx: tx},
 	}
 	if err := fn(stores); err != nil {
 		return err

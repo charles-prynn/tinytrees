@@ -17,48 +17,57 @@ import (
 )
 
 type PostgresStores struct {
-	Users     *PostgresUserStore
-	Sessions  *PostgresSessionStore
-	State     *PostgresStateStore
-	Maps      *PostgresMapStore
-	Entities  *PostgresEntityStore
-	Players   *PostgresPlayerStore
-	Inventory *PostgresInventoryStore
-	Bank      *PostgresBankStore
-	Skills    *PostgresSkillStore
-	Actions   *PostgresActionStore
-	Events    *PostgresEventStore
+	Users       *PostgresUserStore
+	Sessions    *PostgresSessionStore
+	State       *PostgresStateStore
+	Maps        *PostgresMapStore
+	Entities    *PostgresEntityStore
+	Players     *PostgresPlayerStore
+	Inventory   *PostgresInventoryStore
+	Bank        *PostgresBankStore
+	Skills      *PostgresSkillStore
+	Actions     *PostgresActionStore
+	Events      *PostgresEventStore
+	EventOutbox *PostgresEventOutboxStore
+	EventInbox  *PostgresEventInboxStore
+	Realtime    *PostgresRealtimeStore
 }
 
 func NewPostgresStores(pool *pgxpool.Pool) PostgresStores {
 	return PostgresStores{
-		Users:     &PostgresUserStore{pool: pool},
-		Sessions:  &PostgresSessionStore{pool: pool},
-		State:     &PostgresStateStore{pool: pool},
-		Maps:      &PostgresMapStore{pool: pool},
-		Entities:  &PostgresEntityStore{pool: pool},
-		Players:   &PostgresPlayerStore{pool: pool},
-		Inventory: &PostgresInventoryStore{pool: pool},
-		Bank:      &PostgresBankStore{pool: pool},
-		Skills:    &PostgresSkillStore{pool: pool},
-		Actions:   &PostgresActionStore{pool: pool},
-		Events:    &PostgresEventStore{pool: pool},
+		Users:       &PostgresUserStore{pool: pool},
+		Sessions:    &PostgresSessionStore{pool: pool},
+		State:       &PostgresStateStore{pool: pool},
+		Maps:        &PostgresMapStore{pool: pool},
+		Entities:    &PostgresEntityStore{pool: pool},
+		Players:     &PostgresPlayerStore{pool: pool},
+		Inventory:   &PostgresInventoryStore{pool: pool},
+		Bank:        &PostgresBankStore{pool: pool},
+		Skills:      &PostgresSkillStore{pool: pool},
+		Actions:     &PostgresActionStore{pool: pool},
+		Events:      &PostgresEventStore{pool: pool},
+		EventOutbox: &PostgresEventOutboxStore{pool: pool},
+		EventInbox:  &PostgresEventInboxStore{pool: pool},
+		Realtime:    &PostgresRealtimeStore{pool: pool},
 	}
 }
 
 func (s PostgresStores) Interfaces() Stores {
 	return Stores{
-		Users:     s.Users,
-		Sessions:  s.Sessions,
-		State:     s.State,
-		Maps:      s.Maps,
-		Entities:  s.Entities,
-		Players:   s.Players,
-		Inventory: s.Inventory,
-		Bank:      s.Bank,
-		Skills:    s.Skills,
-		Actions:   s.Actions,
-		Events:    s.Events,
+		Users:       s.Users,
+		Sessions:    s.Sessions,
+		State:       s.State,
+		Maps:        s.Maps,
+		Entities:    s.Entities,
+		Players:     s.Players,
+		Inventory:   s.Inventory,
+		Bank:        s.Bank,
+		Skills:      s.Skills,
+		Actions:     s.Actions,
+		Events:      s.Events,
+		EventOutbox: s.EventOutbox,
+		EventInbox:  s.EventInbox,
+		Realtime:    s.Realtime,
 	}
 }
 

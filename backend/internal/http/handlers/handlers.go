@@ -21,10 +21,11 @@ type Handler struct {
 	events        *service.EventService
 	inventory     *service.InventoryService
 	admin         *service.AdminService
+	realtime      *service.RealtimeBroker
 	allowWSOrigin func(r *http.Request, origin string) bool
 }
 
-func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, events *service.EventService, inventory *service.InventoryService, admin *service.AdminService, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
+func New(auth *service.AuthService, state *service.StateService, maps *service.MapService, entities *service.EntityService, players *service.PlayerService, actions *service.ActionService, events *service.EventService, inventory *service.InventoryService, admin *service.AdminService, realtime *service.RealtimeBroker, allowWSOrigin func(r *http.Request, origin string) bool) *Handler {
 	return &Handler{
 		auth:          auth,
 		state:         state,
@@ -35,6 +36,7 @@ func New(auth *service.AuthService, state *service.StateService, maps *service.M
 		events:        events,
 		inventory:     inventory,
 		admin:         admin,
+		realtime:      realtime,
 		allowWSOrigin: allowWSOrigin,
 	}
 }
@@ -226,7 +228,7 @@ func (h *Handler) MovePlayer(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, service.ErrValidation)
 		return
 	}
-	player, err := h.players.Move(r.Context(), userID, body.TargetX, body.TargetY)
+	player, err := h.players.Move(r.Context(), userID, body.TargetX, body.TargetY, body.ClientMoveID)
 	if err != nil {
 		response.Error(w, r, err)
 		return
@@ -272,19 +274,54 @@ func (h *Handler) CurrentAction(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, map[string]any{"action": toActionDTO(action)})
 }
 
-func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEventInbox(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserID(r.Context())
 	if !ok {
 		response.Error(w, r, service.ErrUnauthorized)
 		return
 	}
 
+	afterID, limit, err := parseAfterIDAndLimit(r)
+	if err != nil {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+
+	items, err := h.events.ListInbox(r.Context(), userID, afterID, limit)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": toInboxDTOs(items)})
+}
+
+func (h *Handler) AckEventInbox(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserID(r.Context())
+	if !ok {
+		response.Error(w, r, service.ErrUnauthorized)
+		return
+	}
+
+	var body eventInboxAckRequest
+	if err := response.DecodeJSON(r, &body); err != nil || !validInboxIDs(body.IDs) {
+		response.Error(w, r, service.ErrValidation)
+		return
+	}
+
+	items, err := h.events.AckInbox(r.Context(), userID, body.IDs)
+	if err != nil {
+		response.Error(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": toInboxDTOs(items)})
+}
+
+func parseAfterIDAndLimit(r *http.Request) (int64, int, error) {
 	afterID := int64(0)
 	if raw := r.URL.Query().Get("after_id"); raw != "" {
 		parsed, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || parsed < 0 {
-			response.Error(w, r, service.ErrValidation)
-			return
+			return 0, 0, service.ErrValidation
 		}
 		afterID = parsed
 	}
@@ -293,18 +330,23 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 || parsed > 200 {
-			response.Error(w, r, service.ErrValidation)
-			return
+			return 0, 0, service.ErrValidation
 		}
 		limit = parsed
 	}
+	return afterID, limit, nil
+}
 
-	events, err := h.events.List(r.Context(), userID, afterID, limit)
-	if err != nil {
-		response.Error(w, r, err)
-		return
+func validInboxIDs(ids []int64) bool {
+	if len(ids) == 0 {
+		return false
 	}
-	response.JSON(w, r, http.StatusOK, map[string]any{"events": toEventDTOs(events)})
+	for _, id := range ids {
+		if id <= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {

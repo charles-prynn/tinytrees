@@ -8,9 +8,17 @@ Generic Go API starter using chi, pgx, Postgres, JWT sessions, structured logs, 
 cp .env.example .env
 go mod tidy
 make run
+make run-worker
 ```
 
-The API listens on `:8080` by default.
+The API listens on `:8080` by default. Run the worker alongside it so actions
+continue progressing and event deliveries continue processing while players are
+offline.
+
+For local `make run`, the API also starts embedded workers by default so
+harvests and inbox delivery work without a second process. Set
+`RUN_EMBEDDED_WORKERS=false` when you want the API process to stay passive and
+use `make run-worker` or the dedicated worker container instead.
 
 Set `ADMIN_SECRET` to enable the standalone admin panel endpoints.
 
@@ -50,8 +58,11 @@ make migrate-down
 - `POST /v1/player/move`
 - `GET /v1/actions/current`
 - `POST /v1/actions/harvest`
-- `GET /v1/events`
+- `GET /v1/events/inbox`
+- `POST /v1/events/inbox/ack`
 - `GET /v1/inventory`
+- `GET /v1/bank`
+- `POST /v1/bank/deposit`
 - `GET /v1/admin/overview`
 - `GET /v1/admin/users/{userID}`
 - `POST /v1/admin/users/{userID}/inventory`
@@ -94,6 +105,10 @@ Client messages:
 { "id": "4", "type": "actions.current" }
 { "id": "5", "type": "actions.harvest", "payload": { "entity_id": "<uuid>" } }
 { "id": "6", "type": "inventory.get" }
+{ "id": "7", "type": "events.inbox" }
+{ "id": "8", "type": "events.ack", "payload": { "ids": [101, 102] } }
+{ "id": "9", "type": "bank.get" }
+{ "id": "10", "type": "bank.deposit", "payload": { "entity_id": "<uuid>", "item_key": "wood", "quantity": 10 } }
 ```
 
 Server messages include the same `id` so the app can match replies:
@@ -102,6 +117,8 @@ Server messages include the same `id` so the app can match replies:
 { "id": "3", "type": "player.updated", "data": { "player": {} } }
 { "id": "5", "type": "action.started", "data": { "action": {} } }
 { "id": "6", "type": "inventory.updated", "data": { "items": [] } }
+{ "id": "7", "type": "events.updated", "data": { "items": [] } }
+{ "id": "8", "type": "events.acked", "data": { "items": [] } }
 ```
 
 Errors use the same shape as HTTP errors:
@@ -112,22 +129,38 @@ Errors use the same shape as HTTP errors:
 
 ## Action Events
 
-Long-running player actions are now resolved by a background worker instead of
-only when a player reads state. Durable player-scoped events are recorded in the
-database and can be fetched with:
+Long-running player actions are now resolved by a separate worker process
+instead of when a player reads state. The API is passive for action reads;
+the worker owns due-action execution and event delivery.
+
+Durable domain events are still recorded internally in Postgres. The client-facing
+notification surface is the delivered inbox:
 
 ```text
-GET /v1/events?after_id=0&limit=50
+GET /v1/events/inbox?after_id=0&limit=50
 Authorization: Bearer <access_token>
 ```
 
-The event log includes entries such as:
+Inbox items can be acknowledged with:
+
+```text
+POST /v1/events/inbox/ack
+Authorization: Bearer <access_token>
+{ "ids": [101, 102] }
+```
+
+The internal event stream includes entries such as:
 
 - `action.started`
 - `action.cancelled`
 - `action.completed`
 - `resource.depleted`
 - `skill.level_up`
+
+The inbox is the delivery layer for player notifications. It is what the client
+should use for notification-style UI and for polling when no realtime
+connection is open. The current inbox implementation only delivers
+`action.completed` notifications to avoid noisy start/cancel events.
 
 ## Auth Modes
 

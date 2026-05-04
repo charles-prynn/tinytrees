@@ -23,6 +23,7 @@ type InventoryService struct {
 	bank      store.BankStore
 	players   store.PlayerStore
 	entities  store.EntityStore
+	realtime  store.RealtimeStore
 	actions   *ActionService
 	now       func() time.Time
 }
@@ -36,6 +37,10 @@ func NewInventoryService(inventory store.InventoryStore, bank store.BankStore, p
 		actions:   actions,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func (s *InventoryService) SetRealtimeStore(realtime store.RealtimeStore) {
+	s.realtime = realtime
 }
 
 func (s *InventoryService) List(ctx context.Context, userID uuid.UUID) ([]domain.InventoryItem, error) {
@@ -93,5 +98,6 @@ func (s *InventoryService) Deposit(ctx context.Context, userID uuid.UUID, entity
 	if moved <= 0 {
 		return 0, ErrInventoryItemUnavailable
 	}
+	notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicPlayer, realtimeTopicInventory, realtimeTopicBank)
 	return moved, nil
 }

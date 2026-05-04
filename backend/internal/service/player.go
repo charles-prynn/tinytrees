@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"time"
 
 	"starter/backend/internal/domain"
@@ -22,6 +23,7 @@ type PlayerService struct {
 	maps     store.MapStore
 	entities store.EntityStore
 	skills   store.SkillStore
+	realtime store.RealtimeStore
 	actions  *ActionService
 	now      func() time.Time
 }
@@ -40,6 +42,10 @@ func (s *PlayerService) SetActionService(actions *ActionService) {
 	s.actions = actions
 }
 
+func (s *PlayerService) SetRealtimeStore(realtime store.RealtimeStore) {
+	s.realtime = realtime
+}
+
 func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Player, error) {
 	lifecycle, err := s.resolveLifecycle(ctx, userID)
 	if err != nil {
@@ -54,7 +60,7 @@ func (s *PlayerService) Get(ctx context.Context, userID uuid.UUID) (domain.Playe
 	return s.attachSkills(ctx, userID, lifecycle.player)
 }
 
-func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int, targetY int) (domain.Player, error) {
+func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int, targetY int, clientMoveIDs ...string) (domain.Player, error) {
 	lifecycle, err := s.resolveLifecycle(ctx, userID)
 	if err != nil {
 		return domain.Player{}, err
@@ -83,6 +89,13 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 	}
 
 	now := s.now()
+	clientMoveID := ""
+	if len(clientMoveIDs) > 0 {
+		clientMoveID = strings.TrimSpace(clientMoveIDs[0])
+	}
+	if clientMoveID == "" {
+		clientMoveID = uuid.NewString()
+	}
 	player := lifecycle.player
 	from := currentPlayerPoint(player, now)
 	delete(blockedTiles, from)
@@ -95,6 +108,7 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 		if err != nil {
 			return domain.Player{}, err
 		}
+		notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicPlayer)
 		return s.attachSkills(ctx, userID, saved)
 	}
 
@@ -102,6 +116,7 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 	player.X = from.X
 	player.Y = from.Y
 	player.Movement = &domain.PlayerMovement{
+		ClientMoveID:        clientMoveID,
 		FromX:               from.X,
 		FromY:               from.Y,
 		TargetX:             targetX,
@@ -115,6 +130,7 @@ func (s *PlayerService) Move(ctx context.Context, userID uuid.UUID, targetX int,
 	if err != nil {
 		return domain.Player{}, err
 	}
+	notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicPlayer)
 	return s.attachSkills(ctx, userID, saved)
 }
 

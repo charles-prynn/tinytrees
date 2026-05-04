@@ -92,6 +92,7 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       _playerRenderMotion = null;
       return;
     }
+    final now = DateTime.now().toUtc();
     final xpGained = _xpDelta(previous, value);
     if (xpGained > 0) {
       _xpDropEffects.add(
@@ -102,14 +103,25 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         ),
       );
     }
-    final target = Offset(value.renderX, value.renderY);
+    final targetPosition = value.renderPositionAt(now);
+    final target = Offset(targetPosition.x, targetPosition.y);
     if (previous == null || currentRenderPosition == null) {
       _playerRenderMotion = _PlayerRenderMotion.snap(target);
       return;
     }
+    final hasActiveMovement = value.hasActiveMovementAt(now);
+    final previousMoveId = previous.movement?.clientMoveId.trim() ?? '';
+    final nextMoveId = value.movement?.clientMoveId.trim() ?? '';
+    if (hasActiveMovement &&
+        (previousMoveId.isEmpty ||
+            nextMoveId.isEmpty ||
+            previousMoveId == nextMoveId)) {
+      _playerRenderMotion = null;
+      return;
+    }
     final delta = target - currentRenderPosition;
     _lastPlayerDirection = _cardinalDirectionForDelta(delta);
-    if (delta.distance > 1.5) {
+    if (delta.distance > 1.5 && !hasActiveMovement) {
       _playerRenderMotion = _PlayerRenderMotion.snap(target);
       return;
     }
@@ -484,12 +496,6 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
         drawTileSize: drawTileSize,
         paint: _pixelPaint,
       );
-      _drawXpDrops(
-        canvas: canvas,
-        pose: playerPose,
-        offset: offset,
-        drawTileSize: drawTileSize,
-      );
     }
 
     for (final entity in entities) {
@@ -508,6 +514,14 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       offset: offset,
       drawTileSize: drawTileSize,
     );
+    if (playerPose != null) {
+      _drawXpDrops(
+        canvas: canvas,
+        pose: playerPose,
+        offset: offset,
+        drawTileSize: drawTileSize,
+      );
+    }
 
     for (final effect in _walkIconEffects) {
       _drawWalkIconEffect(
@@ -1386,15 +1400,28 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
   }
 
   Offset? _playerRenderPosition() {
-    final motion = _playerRenderMotion;
-    if (motion != null) {
-      return motion.positionAt(_elapsedSeconds);
-    }
     final current = _player;
     if (current == null) {
       return null;
     }
-    return Offset(current.renderX, current.renderY);
+    final now = DateTime.now().toUtc();
+    final motion = _playerRenderMotion;
+    if (motion != null && motion.isActiveAt(_elapsedSeconds)) {
+      return motion.positionAt(_elapsedSeconds);
+    }
+
+    final movement = current.movement;
+    if (movement != null && movement.path.isNotEmpty) {
+      final position = current.renderPositionAt(now);
+      return Offset(position.x, position.y);
+    }
+
+    if (motion != null) {
+      return motion.positionAt(_elapsedSeconds);
+    }
+
+    final position = current.renderPositionAt(now);
+    return Offset(position.x, position.y);
   }
 
   _PlayerPose? _playerPose() {
@@ -1414,8 +1441,10 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     final harvestDirection = _harvestDirectionFor(current);
     if (harvestDirection != null) {
       _lastPlayerDirection = harvestDirection;
+      final authoritativePosition = current.renderPositionAt(now);
       final renderPosition =
-          _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
+          _playerRenderPosition() ??
+          Offset(authoritativePosition.x, authoritativePosition.y);
       final targetYaw = _modelYawForCardinal(harvestDirection);
       return _PlayerPose(
         position: renderPosition,
@@ -1426,8 +1455,10 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
     }
 
     final movement = current.movement;
+    final authoritativePosition = current.renderPositionAt(now);
     final renderPosition =
-        _playerRenderPosition() ?? Offset(current.renderX, current.renderY);
+        _playerRenderPosition() ??
+        Offset(authoritativePosition.x, authoritativePosition.y);
     if (movement == null || movement.path.isEmpty) {
       final targetYaw = _modelYawForCardinal(_lastPlayerDirection);
       return _PlayerPose(
@@ -1476,7 +1507,8 @@ class TileMapRenderer extends Component with HasGameReference<TileMapGame> {
       return true;
     }
 
-    final authoritativePosition = Offset(current.renderX, current.renderY);
+    final position = current.renderPositionAt(now);
+    final authoritativePosition = Offset(position.x, position.y);
     if ((authoritativePosition - renderPosition).distance >
         _playerWalkAnimationDistanceThreshold) {
       return true;

@@ -34,14 +34,16 @@ var (
 )
 
 type ActionService struct {
-	actions    store.ActionStore
-	inventory  store.InventoryStore
-	skills     store.SkillStore
-	players    store.PlayerStore
-	entities   store.EntityStore
-	events     store.EventStore
-	transactor store.Transactor
-	now        func() time.Time
+	actions     store.ActionStore
+	inventory   store.InventoryStore
+	skills      store.SkillStore
+	players     store.PlayerStore
+	entities    store.EntityStore
+	events      store.EventStore
+	eventOutbox store.EventOutboxStore
+	realtime    store.RealtimeStore
+	transactor  store.Transactor
+	now         func() time.Time
 }
 
 func NewActionService(actions store.ActionStore, inventory store.InventoryStore, skills store.SkillStore, players store.PlayerStore, entities store.EntityStore) *ActionService {
@@ -63,6 +65,14 @@ func (s *ActionService) SetEventStore(events store.EventStore) {
 	s.events = events
 }
 
+func (s *ActionService) SetEventOutboxStore(eventOutbox store.EventOutboxStore) {
+	s.eventOutbox = eventOutbox
+}
+
+func (s *ActionService) SetRealtimeStore(realtime store.RealtimeStore) {
+	s.realtime = realtime
+}
+
 func (s *ActionService) Current(ctx context.Context, userID uuid.UUID) (*domain.PlayerAction, error) {
 	return s.Resolve(ctx, userID)
 }
@@ -78,7 +88,10 @@ func (s *ActionService) CancelActive(ctx context.Context, userID uuid.UUID) erro
 		if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
 			return err
 		}
-		return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.cancelled", now)})
+		if err := s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.cancelled", now)}); err != nil {
+			return err
+		}
+		return notifyRealtimeStores(ctx, stores, userID, realtimeTopicPlayer)
 	})
 }
 
@@ -172,7 +185,10 @@ func (s *ActionService) StartHarvest(ctx context.Context, userID uuid.UUID, enti
 		if err != nil {
 			return err
 		}
-		return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(created, "action.started", now)})
+		if err := s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(created, "action.started", now)}); err != nil {
+			return err
+		}
+		return notifyRealtimeStores(ctx, stores, userID, realtimeTopicPlayer)
 	})
 	return created, err
 }
@@ -238,7 +254,10 @@ func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, 
 			if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
 				return err
 			}
-			return s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.completed", now)})
+			if err := s.appendEvents(ctx, stores, []domain.PlayerEvent{s.newActionEvent(*action, "action.completed", now)}); err != nil {
+				return err
+			}
+			return notifyRealtimeStores(ctx, stores, action.UserID, realtimeTopicPlayer)
 		}
 		return nil
 	}
@@ -259,6 +278,8 @@ func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, 
 	levelUps := int64Metadata(action.Metadata, "level_ups", 0)
 	currentLevel := int64Metadata(action.Metadata, "current_level", 0)
 	startingLevel := currentLevel
+	inventoryChanged := false
+	entityChanged := false
 
 	for !action.NextTickAt.After(now) && !action.NextTickAt.After(action.EndsAt) {
 		ticksProcessed++
@@ -268,6 +289,7 @@ func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, 
 				return err
 			}
 			rewardsGranted += addedQuantity
+			inventoryChanged = inventoryChanged || addedQuantity > 0
 			if addedQuantity > 0 && stores.Skills != nil && skillKey != "" && xpPerReward > 0 {
 				skill, err := stores.Skills.AddXP(ctx, action.UserID, skillKey, xpPerReward*addedQuantity)
 				if err != nil {
@@ -310,6 +332,7 @@ func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, 
 				if entity, err = depleteResourceNode(ctx, stores.Entities, entity, now); err != nil {
 					return err
 				}
+				entityChanged = true
 				emitted = append(emitted, s.newResourceEvent(*action, entity, "resource.depleted", now))
 			}
 		}
@@ -319,14 +342,50 @@ func (s *ActionService) advanceAction(ctx context.Context, stores store.Stores, 
 	if _, err := stores.Actions.SaveAction(ctx, *action); err != nil {
 		return err
 	}
-	return s.appendEvents(ctx, stores, emitted)
+	if err := s.appendEvents(ctx, stores, emitted); err != nil {
+		return err
+	}
+
+	topics := []string{realtimeTopicPlayer}
+	if inventoryChanged {
+		topics = append(topics, realtimeTopicInventory)
+	}
+	if entityChanged {
+		topics = append(topics, realtimeTopicEntities)
+	}
+	return notifyRealtimeStores(ctx, stores, action.UserID, topics...)
 }
 
 func (s *ActionService) appendEvents(ctx context.Context, stores store.Stores, events []domain.PlayerEvent) error {
 	if len(events) == 0 || stores.Events == nil {
 		return nil
 	}
-	_, err := stores.Events.AppendEvents(ctx, events)
+	appended, err := stores.Events.AppendEvents(ctx, events)
+	if err != nil {
+		return err
+	}
+	if stores.EventOutbox == nil {
+		return nil
+	}
+
+	deliveries := make([]domain.PlayerEventDelivery, 0, len(appended))
+	now := s.now()
+	for _, event := range appended {
+		if !shouldEnqueueInboxDelivery(event) {
+			continue
+		}
+		deliveries = append(deliveries, domain.PlayerEventDelivery{
+			EventID:     event.ID,
+			UserID:      event.UserID,
+			Destination: eventDeliveryDestinationInbox,
+			Status:      eventDeliveryStatusPending,
+			AvailableAt: now,
+		})
+	}
+	if len(deliveries) == 0 {
+		return nil
+	}
+	_, err = stores.EventOutbox.EnqueueDeliveries(ctx, deliveries)
 	return err
 }
 
@@ -339,12 +398,14 @@ func (s *ActionService) withWriteStores(ctx context.Context, fn func(store.Store
 
 func (s *ActionService) baseStores() store.Stores {
 	return store.Stores{
-		Actions:   s.actions,
-		Entities:  s.entities,
-		Events:    s.events,
-		Inventory: s.inventory,
-		Players:   s.players,
-		Skills:    s.skills,
+		Actions:     s.actions,
+		Entities:    s.entities,
+		Events:      s.events,
+		EventOutbox: s.eventOutbox,
+		Inventory:   s.inventory,
+		Players:     s.players,
+		Realtime:    s.realtime,
+		Skills:      s.skills,
 	}
 }
 
@@ -497,6 +558,10 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func shouldEnqueueInboxDelivery(event domain.PlayerEvent) bool {
+	return event.EventType == "action.completed"
 }
 
 func stringMetadata(metadata map[string]any, key string, fallback string) string {

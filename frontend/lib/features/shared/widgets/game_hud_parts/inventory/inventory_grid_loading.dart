@@ -1,56 +1,15 @@
 part of '../../game_hud.dart';
 
 class InventoryGridLoading extends StatelessWidget {
-  const InventoryGridLoading({super.key});
+  const InventoryGridLoading({super.key, this.columns = 8});
+
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: 5),
-            child: InventorySlot(),
-          ),
-        ),
-        Expanded(child: InventorySlot()),
-      ],
+    return _InventorySlotLayout(
+      columns: columns,
+      children: List.generate(8, (_) => const InventorySlot()),
     );
   }
 }

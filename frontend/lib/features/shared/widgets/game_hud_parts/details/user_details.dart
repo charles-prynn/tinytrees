@@ -50,17 +50,16 @@ class UserDetails extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Row(
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
           children: [
-            if (showRegister) ...[
+            if (showRegister)
               _UserActionButton(label: 'Register', onPressed: onRegister),
-              const SizedBox(width: 4),
+            if (showRegister)
               _UserActionButton(label: 'Login', onPressed: onLogin),
-            ],
-            if (showLogout) ...[
-              if (showRegister) const SizedBox(width: 4),
+            if (showLogout)
               _UserActionButton(label: 'Logout', onPressed: onLogout),
-            ],
           ],
         ),
       ],

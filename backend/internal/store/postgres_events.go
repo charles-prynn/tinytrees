@@ -15,8 +15,8 @@ type PostgresEventStore struct {
 	pool *pgxpool.Pool
 }
 
-func (s *PostgresEventStore) ListEvents(ctx context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error) {
-	return listPlayerEvents(ctx, s.pool, userID, afterID, limit)
+func (s *PostgresEventStore) GetEvent(ctx context.Context, eventID int64) (domain.PlayerEvent, error) {
+	return getPlayerEvent(ctx, s.pool, eventID)
 }
 
 func (s *PostgresEventStore) AppendEvents(ctx context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error) {
@@ -27,8 +27,8 @@ type PostgresEventTxStore struct {
 	tx pgx.Tx
 }
 
-func (s *PostgresEventTxStore) ListEvents(ctx context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error) {
-	return listPlayerEvents(ctx, s.tx, userID, afterID, limit)
+func (s *PostgresEventTxStore) GetEvent(ctx context.Context, eventID int64) (domain.PlayerEvent, error) {
+	return getPlayerEvent(ctx, s.tx, eventID)
 }
 
 func (s *PostgresEventTxStore) AppendEvents(ctx context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error) {
@@ -40,31 +40,13 @@ type pgxQuery interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-func listPlayerEvents(ctx context.Context, db pgxQuery, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	rows, err := db.Query(ctx, `
+func getPlayerEvent(ctx context.Context, db pgxQuery, eventID int64) (domain.PlayerEvent, error) {
+	row := db.QueryRow(ctx, `
 		select id, user_id, aggregate_type, aggregate_id, event_type, payload, created_at
 		from player_events
-		where user_id = $1 and id > $2
-		order by id asc
-		limit $3
-	`, userID, afterID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	events := []domain.PlayerEvent{}
-	for rows.Next() {
-		event, err := scanPlayerEvent(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-	return events, rows.Err()
+		where id = $1
+	`, eventID)
+	return scanPlayerEvent(row)
 }
 
 func appendPlayerEvents(ctx context.Context, db pgxQuery, events []domain.PlayerEvent) ([]domain.PlayerEvent, error) {
@@ -110,6 +92,9 @@ func scanPlayerEvent(row interface {
 		&event.CreatedAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return domain.PlayerEvent{}, err
+		}
 		return domain.PlayerEvent{}, err
 	}
 	event.AggregateID = aggregateID

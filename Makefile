@@ -38,9 +38,9 @@ help:
 	@echo "  make ios-device-list List Flutter-visible physical/wireless Apple devices"
 	@echo "  make ios-device-run Run the Flutter app on a physical iPhone over USB or Wi-Fi"
 	@echo "  make print-host-ip  Show the Mac IP address used for device builds"
-	@echo "  make backend        Run API + Postgres with Docker Compose"
+	@echo "  make backend        Run API + worker + Postgres with Docker Compose"
 	@echo "  make backend-local  Run the Go API locally against localhost Postgres"
-	@echo "  make backend-up     Start API + Postgres in the background"
+	@echo "  make backend-up     Start API + worker + Postgres in the background"
 	@echo "  make backend-down   Stop Docker Compose services"
 	@echo "  make db-up          Start only Postgres"
 	@echo "  make db-down        Stop only Postgres"
@@ -132,7 +132,7 @@ backend-local:
 	go run ./cmd/api
 
 backend-up:
-	docker compose up --build -d postgres api
+	docker compose up --build -d postgres api worker
 
 backend-down:
 	docker compose down

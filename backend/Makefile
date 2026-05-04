@@ -1,10 +1,13 @@
 -include .env
 export
 
-.PHONY: run dev test migrate-up migrate-down tidy
+.PHONY: run run-worker dev test migrate-up migrate-down tidy
 
 run:
 	go run ./cmd/api
+
+run-worker:
+	go run ./cmd/worker
 
 dev:
 	docker compose up --build

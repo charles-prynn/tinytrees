@@ -23,10 +23,19 @@ class PlayerRepository {
     return PlayerState.fromJson(data['player'] as Map<String, dynamic>);
   }
 
-  Future<PlayerState> moveTo({required int x, required int y}) async {
+  Future<PlayerState> moveTo({
+    required int x,
+    required int y,
+    String? clientMoveId,
+  }) async {
     final data = await _socket.request(
       'player.move',
-      payload: {'target_x': x, 'target_y': y},
+      payload: {
+        'target_x': x,
+        'target_y': y,
+        if (clientMoveId != null && clientMoveId.isNotEmpty)
+          'client_move_id': clientMoveId,
+      },
     );
     return PlayerState.fromJson(data['player'] as Map<String, dynamic>);
   }

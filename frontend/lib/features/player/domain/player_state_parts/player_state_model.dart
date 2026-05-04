@@ -85,4 +85,92 @@ class PlayerState {
     }
     return null;
   }
+
+  bool hasActiveMovementAt(DateTime now) {
+    final currentMovement = movement;
+    return currentMovement != null &&
+        currentMovement.path.isNotEmpty &&
+        now.isBefore(currentMovement.arrivesAt);
+  }
+
+  MapPoint logicalPositionAt(DateTime now) {
+    final currentMovement = movement;
+    if (currentMovement == null || currentMovement.path.isEmpty) {
+      return MapPoint(x: x, y: y);
+    }
+    if (!now.isBefore(currentMovement.arrivesAt)) {
+      return MapPoint(x: currentMovement.targetX, y: currentMovement.targetY);
+    }
+    if (!now.isAfter(currentMovement.startedAt)) {
+      return currentMovement.path.first;
+    }
+
+    var distance =
+        now.difference(currentMovement.startedAt).inMicroseconds /
+        Duration.microsecondsPerSecond *
+        currentMovement.speedTilesPerSecond;
+    for (var i = 0; i < currentMovement.path.length - 1; i++) {
+      final from = currentMovement.path[i];
+      final to = currentMovement.path[i + 1];
+      final cost = _movementStepCost(from, to);
+      if (distance <= cost) {
+        return from;
+      }
+      distance -= cost;
+    }
+
+    return currentMovement.path.last;
+  }
+
+  ({double x, double y}) renderPositionAt(DateTime now) {
+    final currentMovement = movement;
+    if (currentMovement == null || currentMovement.path.isEmpty) {
+      return (x: renderX, y: renderY);
+    }
+    if (!now.isBefore(currentMovement.arrivesAt)) {
+      return (
+        x: currentMovement.targetX.toDouble(),
+        y: currentMovement.targetY.toDouble(),
+      );
+    }
+    if (!now.isAfter(currentMovement.startedAt)) {
+      final first = currentMovement.path.first;
+      return (x: first.x.toDouble(), y: first.y.toDouble());
+    }
+
+    var distance =
+        now.difference(currentMovement.startedAt).inMicroseconds /
+        Duration.microsecondsPerSecond *
+        currentMovement.speedTilesPerSecond;
+    for (var i = 0; i < currentMovement.path.length - 1; i++) {
+      final from = currentMovement.path[i];
+      final to = currentMovement.path[i + 1];
+      final cost = _movementStepCost(from, to);
+      if (distance <= cost) {
+        final progress =
+            cost > 0 ? (distance / cost).clamp(0.0, 1.0).toDouble() : 1.0;
+        return (
+          x: _lerpDouble(from.x.toDouble(), to.x.toDouble(), progress),
+          y: _lerpDouble(from.y.toDouble(), to.y.toDouble(), progress),
+        );
+      }
+      distance -= cost;
+    }
+
+    final last = currentMovement.path.last;
+    return (x: last.x.toDouble(), y: last.y.toDouble());
+  }
+}
+
+double _movementStepCost(MapPoint from, MapPoint to) {
+  final dx = (from.x - to.x).abs().toDouble();
+  final dy = (from.y - to.y).abs().toDouble();
+  if (dx == 1 && dy == 1) {
+    return 1.4142135623730951;
+  }
+  return dx > dy ? dx : dy;
+}
+
+double _lerpDouble(double from, double to, double progress) {
+  return from + (to - from) * progress;
 }

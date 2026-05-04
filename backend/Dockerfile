@@ -4,6 +4,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/worker ./cmd/worker
 
 FROM migrate/migrate:v4.18.3 AS migrate
 
@@ -11,9 +12,10 @@ FROM alpine:3.21
 RUN adduser -D -H appuser
 WORKDIR /app
 COPY --from=build /out/api /app/api
+COPY --from=build /out/worker /app/worker
 COPY --from=migrate /usr/local/bin/migrate /app/migrate
 COPY tilemap.json /app/tilemap.json
 COPY migrations /app/migrations
 USER appuser
 EXPOSE 8080
-ENTRYPOINT ["/app/api"]
+CMD ["/app/api"]

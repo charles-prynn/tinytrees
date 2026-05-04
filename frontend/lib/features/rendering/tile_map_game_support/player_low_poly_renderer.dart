@@ -62,7 +62,7 @@ const _playerLowPolyModel = _PlayerModelSpec(
     color: _playerPantsColor,
   ),
   boot: _PlayerBoxSpec(
-    center: _PlayerModelVector3(0, -0.11, 0),
+    center: _PlayerModelVector3(0, -0.92, 0),
     size: _PlayerModelVector3(0.38, 0.22, 0.48),
     color: _playerBootsColor,
   ),

@@ -135,6 +135,7 @@ type Point struct {
 }
 
 type PlayerMovement struct {
+	ClientMoveID        string    `json:"client_move_id,omitempty"`
 	FromX               int       `json:"from_x"`
 	FromY               int       `json:"from_y"`
 	TargetX             int       `json:"target_x"`

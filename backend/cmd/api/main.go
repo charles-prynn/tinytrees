@@ -10,13 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"starter/backend/internal/auth"
+	"starter/backend/internal/app"
 	"starter/backend/internal/config"
 	"starter/backend/internal/db"
 	apphttp "starter/backend/internal/http"
 	"starter/backend/internal/platform/logger"
 	"starter/backend/internal/service"
-	"starter/backend/internal/store"
 )
 
 func main() {
@@ -45,46 +44,27 @@ func run(log interface {
 	}
 	defer pool.Close()
 
-	stores := store.NewPostgresStores(pool).Interfaces()
-	transactor := store.NewPostgresTransactor(pool)
-	tokenManager := auth.NewTokenManager(cfg.AccessTokenSecret, cfg.RefreshTokenSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
-	authService := service.NewAuthService(stores.Users, stores.Sessions, tokenManager)
-	stateService := service.NewStateService(stores.State)
-	mapService := service.NewMapService(stores.Maps)
-	entityService := service.NewEntityService(stores.Entities)
-	playerService := service.NewPlayerService(stores.Players, stores.Maps, stores.Entities, stores.Skills)
-	actionService := service.NewActionService(stores.Actions, stores.Inventory, stores.Skills, stores.Players, stores.Entities)
-	actionService.SetTransactor(transactor)
-	actionService.SetEventStore(stores.Events)
-	playerService.SetActionService(actionService)
-	inventoryService := service.NewInventoryService(stores.Inventory, stores.Bank, stores.Players, stores.Entities, actionService)
-	eventService := service.NewEventService(stores.Events)
-	adminService := service.NewAdminService(
-		stores.Users,
-		playerService,
-		inventoryService,
-		entityService,
-		actionService,
-		stores.Players,
-		stores.Maps,
-		stores.Entities,
-		stores.Inventory,
-		stores.Skills,
-	)
+	services := app.NewServices(pool, cfg)
+	go services.Realtime.Run(ctx, log)
+	if cfg.RunEmbeddedWorkers {
+		actionWorker := service.NewActionWorker(services.Action, cfg.ActionWorkerInterval, cfg.ActionWorkerBatchSize, log)
+		dispatcherWorker := service.NewEventDispatcherWorker(services.EventDispatcher, cfg.EventDispatcherInterval, cfg.EventDispatcherBatchSize, log)
+		log.Info("embedded workers enabled", "action_interval", cfg.ActionWorkerInterval.String(), "event_interval", cfg.EventDispatcherInterval.String())
+		go actionWorker.Run(ctx)
+		go dispatcherWorker.Run(ctx)
+	}
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           apphttp.NewRouter(cfg, logger.New(), authService, stateService, mapService, entityService, playerService, actionService, eventService, inventoryService, adminService),
+		Handler:           apphttp.NewRouter(cfg, logger.New(), services.Auth, services.State, services.Map, services.Entity, services.Player, services.Action, services.Event, services.Inventory, services.Admin, services.Realtime),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	worker := service.NewActionWorker(actionService, 500*time.Millisecond, 32, log)
 
 	errs := make(chan error, 1)
 	go func() {
 		log.Info("api listening", "addr", server.Addr)
 		errs <- server.ListenAndServe()
 	}()
-	go worker.Run(ctx)
 
 	select {
 	case <-ctx.Done():

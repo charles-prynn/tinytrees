@@ -73,8 +73,29 @@ type ActionStore interface {
 }
 
 type EventStore interface {
-	ListEvents(ctx context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerEvent, error)
+	GetEvent(ctx context.Context, eventID int64) (domain.PlayerEvent, error)
 	AppendEvents(ctx context.Context, events []domain.PlayerEvent) ([]domain.PlayerEvent, error)
+}
+
+type EventOutboxStore interface {
+	EnqueueDeliveries(ctx context.Context, deliveries []domain.PlayerEventDelivery) ([]domain.PlayerEventDelivery, error)
+	ClaimNextPendingDelivery(ctx context.Context, destination string, now time.Time) (*domain.PlayerEventDelivery, error)
+	MarkDeliveryDelivered(ctx context.Context, deliveryID int64, deliveredAt time.Time) error
+}
+
+type EventInboxStore interface {
+	ListInbox(ctx context.Context, userID uuid.UUID, afterID int64, limit int) ([]domain.PlayerInboxItem, error)
+	AppendInboxItems(ctx context.Context, items []domain.PlayerInboxItem) ([]domain.PlayerInboxItem, error)
+	MarkInboxItemsRead(ctx context.Context, userID uuid.UUID, ids []int64, readAt time.Time) ([]domain.PlayerInboxItem, error)
+}
+
+type RealtimeNotification struct {
+	UserID uuid.UUID
+	Topics []string
+}
+
+type RealtimeStore interface {
+	PublishRealtime(ctx context.Context, notification RealtimeNotification) error
 }
 
 type Transactor interface {
@@ -82,15 +103,18 @@ type Transactor interface {
 }
 
 type Stores struct {
-	Users     UserStore
-	Sessions  SessionStore
-	State     StateStore
-	Maps      MapStore
-	Entities  EntityStore
-	Players   PlayerStore
-	Inventory InventoryStore
-	Bank      BankStore
-	Skills    SkillStore
-	Actions   ActionStore
-	Events    EventStore
+	Users       UserStore
+	Sessions    SessionStore
+	State       StateStore
+	Maps        MapStore
+	Entities    EntityStore
+	Players     PlayerStore
+	Inventory   InventoryStore
+	Bank        BankStore
+	Skills      SkillStore
+	Actions     ActionStore
+	Events      EventStore
+	EventOutbox EventOutboxStore
+	EventInbox  EventInboxStore
+	Realtime    RealtimeStore
 }

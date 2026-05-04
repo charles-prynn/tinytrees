@@ -12,6 +12,8 @@ import 'package:treescape/features/auth/domain/auth_session.dart';
 import 'package:treescape/features/auth/domain/user.dart';
 import 'package:treescape/features/entities/data/entity_repository.dart';
 import 'package:treescape/features/entities/domain/world_entity.dart';
+import 'package:treescape/features/events/application/event_inbox_controller.dart';
+import 'package:treescape/features/events/domain/player_inbox_item.dart';
 import 'package:treescape/features/inventory/data/inventory_repository.dart';
 import 'package:treescape/features/inventory/domain/inventory_item.dart';
 import 'package:treescape/features/map/application/map_controller.dart';
@@ -90,7 +92,8 @@ void main() {
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
     expect(find.text('Inventory'), findsWidgets);
-    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Inbox'), findsOneWidget);
+    expect(find.text('Open'), findsNWidgets(2));
     expect(find.text('User'), findsOneWidget);
     expect(find.textContaining('Guest'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
@@ -155,6 +158,38 @@ void main() {
     expect(find.text('Register'), findsOneWidget);
     expect(find.text('Login'), findsOneWidget);
     expect(find.text('Logout'), findsNothing);
+  });
+
+  testWidgets('HUD keeps a single scaled top bar on narrow screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_buildTestApp(player: _playerState()));
+
+    await _waitForInitialGameLoad(tester);
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('hud-top-bar'))).height,
+      TopBar.barHeight,
+    );
+    expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.widgetWithText(InkWell, 'Inventory'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('inventory-drawer'))).height,
+      greaterThan(TopBar.barHeight),
+    );
+    expect(find.text('x12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('guest register popup opens in the center overlay', (
@@ -223,6 +258,9 @@ void main() {
         ProviderScope(
           overrides: [
             authControllerProvider.overrideWith(() => _FakeAuthController()),
+            eventInboxControllerProvider.overrideWith(
+              () => _FakeEventInboxController(),
+            ),
             playerStateProvider.overrideWith((ref) async => _playerState()),
             inventoryProvider.overrideWith((ref) => Stream.value(_inventory)),
             bankProvider.overrideWith((ref) => Stream.value(bankItems)),
@@ -232,6 +270,7 @@ void main() {
               body: GameHud(
                 inventoryOpen: true,
                 bankOpen: true,
+                inboxOpen: false,
                 loginOpen: false,
                 registrationOpen: false,
                 minimapVisible: false,
@@ -242,6 +281,8 @@ void main() {
                 onInventoryPressed: () {},
                 onInventoryClosed: () {},
                 onBankClosed: () {},
+                onInboxPressed: () {},
+                onInboxClosed: () {},
                 onInventoryItemTap: (item) => tappedItem = item,
                 onPlayerRenderModeToggle: () {},
                 onLoginPressed: () {},
@@ -282,6 +323,9 @@ void main() {
       ProviderScope(
         overrides: [
           authControllerProvider.overrideWith(() => authController),
+          eventInboxControllerProvider.overrideWith(
+            () => _FakeEventInboxController(),
+          ),
           tileMapProvider.overrideWith((ref) async => _tileMap),
           worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
           playerStateProvider.overrideWith((ref) async => _playerState()),
@@ -334,6 +378,9 @@ void main() {
         ProviderScope(
           overrides: [
             authControllerProvider.overrideWith(() => _FakeAuthController()),
+            eventInboxControllerProvider.overrideWith(
+              () => _FakeEventInboxController(),
+            ),
             mapControllerProvider.overrideWith(
               () => _DelayedMapController(mapCompleter.future),
             ),
@@ -389,6 +436,9 @@ Widget _buildTestApp({required PlayerState player}) {
   return ProviderScope(
     overrides: [
       authControllerProvider.overrideWith(() => _FakeAuthController()),
+      eventInboxControllerProvider.overrideWith(
+        () => _FakeEventInboxController(),
+      ),
       tileMapProvider.overrideWith((ref) async => _tileMap),
       worldEntitiesProvider.overrideWith((ref) => Stream.value(_entities)),
       playerStateProvider.overrideWith((ref) async => player),
@@ -429,6 +479,13 @@ class _MutableFakeAuthController extends AuthController {
   void setSession(AuthSession? session) {
     _session = session;
     state = AsyncData(session);
+  }
+}
+
+class _FakeEventInboxController extends EventInboxController {
+  @override
+  Future<List<PlayerInboxItem>> build() async {
+    return const [];
   }
 }
 

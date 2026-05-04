@@ -11,17 +11,15 @@ import (
 	"starter/backend/internal/http/middleware"
 	"starter/backend/internal/http/response"
 	"starter/backend/internal/service"
+	"starter/backend/internal/store"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
 const (
-	wsWriteTimeout          = 10 * time.Second
-	wsReadLimit             = 32 * 1024
-	wsPlayerUpdateInterval  = 200 * time.Millisecond
-	wsInventoryUpdatePeriod = time.Second
-	wsEntityUpdatePeriod    = 200 * time.Millisecond
+	wsWriteTimeout = 10 * time.Second
+	wsReadLimit    = 32 * 1024
 )
 
 type wsClientMessage struct {
@@ -73,7 +71,11 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 		return writeWebSocketJSON(conn, message)
 	}
 
-	go h.pushRealtimeUpdates(ctx, userID, write)
+	if h.realtime != nil {
+		updates, unsubscribe := h.realtime.Subscribe(userID)
+		defer unsubscribe()
+		go h.pushRealtimeUpdates(ctx, userID, updates, write)
+	}
 
 	for {
 		var message wsClientMessage
@@ -91,102 +93,134 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, write func(wsServerMessage) error) {
-	playerTicker := time.NewTicker(wsPlayerUpdateInterval)
-	inventoryTicker := time.NewTicker(wsInventoryUpdatePeriod)
-	bankTicker := time.NewTicker(wsInventoryUpdatePeriod)
-	entityTicker := time.NewTicker(wsEntityUpdatePeriod)
-	defer playerTicker.Stop()
-	defer inventoryTicker.Stop()
-	defer bankTicker.Stop()
-	defer entityTicker.Stop()
+type wsRealtimeSnapshot struct {
+	lastPlayerJSON    []byte
+	lastActionJSON    []byte
+	lastInventoryJSON []byte
+	lastBankJSON      []byte
+	lastEntityJSON    []byte
+	lastInboxJSON     []byte
+}
 
-	var lastPlayerJSON []byte
-	var lastActionJSON []byte
-	var lastInventoryJSON []byte
-	var lastBankJSON []byte
-	var lastEntityJSON []byte
+func (h *Handler) pushRealtimeUpdates(ctx context.Context, userID uuid.UUID, updates <-chan store.RealtimeNotification, write func(wsServerMessage) error) {
+	snapshot := &wsRealtimeSnapshot{}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-playerTicker.C:
-			player, err := h.players.Get(ctx, userID)
-			if err != nil {
-				continue
+		case notification := <-updates:
+			if err := h.pushRealtimeNotification(ctx, userID, notification, snapshot, write); err != nil {
+				return
 			}
-			playerJSON, err := json.Marshal(toPlayerDTO(player))
-			if err == nil && !jsonEqual(lastPlayerJSON, playerJSON) {
+		}
+	}
+}
+
+func (h *Handler) pushRealtimeNotification(ctx context.Context, userID uuid.UUID, notification store.RealtimeNotification, snapshot *wsRealtimeSnapshot, write func(wsServerMessage) error) error {
+	topicSet := make(map[string]struct{}, len(notification.Topics))
+	for _, topic := range notification.Topics {
+		topicSet[topic] = struct{}{}
+	}
+
+	if _, ok := topicSet["player"]; ok {
+		player, err := h.players.Get(ctx, userID)
+		if err == nil {
+			playerDTO := toPlayerDTO(player)
+			playerJSON, err := json.Marshal(playerDTO)
+			if err == nil && !jsonEqual(snapshot.lastPlayerJSON, playerJSON) {
 				if err := write(wsServerMessage{
 					Type: "player.updated",
-					Data: map[string]any{"player": toPlayerDTO(player)},
+					Data: map[string]any{"player": playerDTO},
 				}); err != nil {
-					return
+					return err
 				}
-				lastPlayerJSON = playerJSON
+				snapshot.lastPlayerJSON = playerJSON
 			}
 
-			actionJSON, err := json.Marshal(toActionDTO(player.Action))
-			if err == nil && !jsonEqual(lastActionJSON, actionJSON) {
+			actionDTO := toActionDTO(player.Action)
+			actionJSON, err := json.Marshal(actionDTO)
+			if err == nil && !jsonEqual(snapshot.lastActionJSON, actionJSON) {
 				if err := write(wsServerMessage{
 					Type: "action.updated",
-					Data: map[string]any{"action": toActionDTO(player.Action)},
+					Data: map[string]any{"action": actionDTO},
 				}); err != nil {
-					return
+					return err
 				}
-				lastActionJSON = actionJSON
+				snapshot.lastActionJSON = actionJSON
 			}
-		case <-entityTicker.C:
-			entities, err := h.entities.List(ctx, userID)
-			if err != nil {
-				continue
-			}
+		}
+	}
+
+	if _, ok := topicSet["entities"]; ok {
+		entities, err := h.entities.List(ctx, userID)
+		if err == nil {
 			entityDTOs := toEntityDTOs(entities)
 			entityJSON, err := json.Marshal(entityDTOs)
-			if err == nil && !jsonEqual(lastEntityJSON, entityJSON) {
+			if err == nil && !jsonEqual(snapshot.lastEntityJSON, entityJSON) {
 				if err := write(wsServerMessage{
 					Type: "entities.updated",
 					Data: map[string]any{"entities": entityDTOs},
 				}); err != nil {
-					return
+					return err
 				}
-				lastEntityJSON = entityJSON
+				snapshot.lastEntityJSON = entityJSON
 			}
-		case <-inventoryTicker.C:
-			items, err := h.inventory.List(ctx, userID)
-			if err != nil {
-				continue
-			}
+		}
+	}
+
+	if _, ok := topicSet["inventory"]; ok {
+		items, err := h.inventory.List(ctx, userID)
+		if err == nil {
 			inventoryDTOs := toInventoryDTOs(items)
 			inventoryJSON, err := json.Marshal(inventoryDTOs)
-			if err == nil && !jsonEqual(lastInventoryJSON, inventoryJSON) {
+			if err == nil && !jsonEqual(snapshot.lastInventoryJSON, inventoryJSON) {
 				if err := write(wsServerMessage{
 					Type: "inventory.updated",
 					Data: map[string]any{"items": inventoryDTOs},
 				}); err != nil {
-					return
+					return err
 				}
-				lastInventoryJSON = inventoryJSON
+				snapshot.lastInventoryJSON = inventoryJSON
 			}
-		case <-bankTicker.C:
-			items, err := h.inventory.ListBank(ctx, userID)
-			if err != nil {
-				continue
-			}
+		}
+	}
+
+	if _, ok := topicSet["bank"]; ok {
+		items, err := h.inventory.ListBank(ctx, userID)
+		if err == nil {
 			bankDTOs := toInventoryDTOs(items)
 			bankJSON, err := json.Marshal(bankDTOs)
-			if err == nil && !jsonEqual(lastBankJSON, bankJSON) {
+			if err == nil && !jsonEqual(snapshot.lastBankJSON, bankJSON) {
 				if err := write(wsServerMessage{
 					Type: "bank.updated",
 					Data: map[string]any{"items": bankDTOs},
 				}); err != nil {
-					return
+					return err
 				}
-				lastBankJSON = bankJSON
+				snapshot.lastBankJSON = bankJSON
 			}
 		}
 	}
+
+	if _, ok := topicSet["events"]; ok {
+		items, err := h.events.ListInbox(ctx, userID, 0, 50)
+		if err == nil {
+			inboxDTOs := toInboxDTOs(items)
+			inboxJSON, err := json.Marshal(inboxDTOs)
+			if err == nil && !jsonEqual(snapshot.lastInboxJSON, inboxJSON) {
+				if err := write(wsServerMessage{
+					Type: "events.updated",
+					Data: map[string]any{"items": inboxDTOs},
+				}); err != nil {
+					return err
+				}
+				snapshot.lastInboxJSON = inboxJSON
+			}
+		}
+	}
+
+	return nil
 }
 
 func jsonEqual(a []byte, b []byte) bool {
@@ -219,7 +253,7 @@ func (h *Handler) handleWebSocketMessage(r *http.Request, userID uuid.UUID, mess
 		if err := decodeWebSocketPayload(message.Payload, &body); err != nil {
 			return wsError(message.ID, "player.move.error", service.ErrValidation)
 		}
-		player, err := h.players.Move(r.Context(), userID, body.TargetX, body.TargetY)
+		player, err := h.players.Move(r.Context(), userID, body.TargetX, body.TargetY, body.ClientMoveID)
 		if err != nil {
 			return wsError(message.ID, "player.move.error", err)
 		}
@@ -265,6 +299,30 @@ func (h *Handler) handleWebSocketMessage(r *http.Request, userID uuid.UUID, mess
 			ID:   message.ID,
 			Type: "inventory.updated",
 			Data: map[string]any{"items": toInventoryDTOs(items)},
+		}
+	case "events.inbox":
+		items, err := h.events.ListInbox(r.Context(), userID, 0, 50)
+		if err != nil {
+			return wsError(message.ID, "events.inbox.error", err)
+		}
+		return wsServerMessage{
+			ID:   message.ID,
+			Type: "events.updated",
+			Data: map[string]any{"items": toInboxDTOs(items)},
+		}
+	case "events.ack":
+		var body eventInboxAckRequest
+		if err := decodeWebSocketPayload(message.Payload, &body); err != nil || !validInboxIDs(body.IDs) {
+			return wsError(message.ID, "events.ack.error", service.ErrValidation)
+		}
+		items, err := h.events.AckInbox(r.Context(), userID, body.IDs)
+		if err != nil {
+			return wsError(message.ID, "events.ack.error", err)
+		}
+		return wsServerMessage{
+			ID:   message.ID,
+			Type: "events.acked",
+			Data: map[string]any{"items": toInboxDTOs(items)},
 		}
 	case "bank.get":
 		items, err := h.inventory.ListBank(r.Context(), userID)

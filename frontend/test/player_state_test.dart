@@ -123,4 +123,46 @@ void main() {
     expect(skill.nextLevelXP, 800);
     expect(skill.progressToNextLevel, closeTo(0.1, 0.0001));
   });
+
+  test('renderPositionAt follows movement timing locally', () {
+    final player = PlayerState.fromJson({
+      'user_id': 'user-1',
+      'x': 10,
+      'y': 5,
+      'render_x': 10,
+      'render_y': 5,
+      'movement': {
+        'from_x': 10,
+        'from_y': 5,
+        'target_x': 12,
+        'target_y': 5,
+        'path': [
+          {'x': 10, 'y': 5},
+          {'x': 11, 'y': 5},
+          {'x': 12, 'y': 5},
+        ],
+        'started_at': '2026-05-04T10:00:00Z',
+        'arrives_at': '2026-05-04T10:00:02Z',
+        'speed_tiles_per_second': 1,
+      },
+    });
+
+    final halfway = player.renderPositionAt(DateTime.utc(2026, 5, 4, 10, 0, 1));
+    final complete = player.renderPositionAt(
+      DateTime.utc(2026, 5, 4, 10, 0, 3),
+    );
+
+    expect(
+      player.hasActiveMovementAt(DateTime.utc(2026, 5, 4, 10, 0, 1)),
+      isTrue,
+    );
+    expect(halfway.x, closeTo(11, 0.0001));
+    expect(halfway.y, closeTo(5, 0.0001));
+    expect(
+      player.hasActiveMovementAt(DateTime.utc(2026, 5, 4, 10, 0, 3)),
+      isFalse,
+    );
+    expect(complete.x, 12);
+    expect(complete.y, 5);
+  });
 }

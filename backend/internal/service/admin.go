@@ -25,6 +25,7 @@ type AdminService struct {
 	mapStore       store.MapStore
 	entityStore    store.EntityStore
 	inventoryStore store.InventoryStore
+	realtime       store.RealtimeStore
 	skillStore     store.SkillStore
 	now            func() time.Time
 }
@@ -54,6 +55,10 @@ func NewAdminService(
 		skillStore:     skillStore,
 		now:            func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func (s *AdminService) SetRealtimeStore(realtime store.RealtimeStore) {
+	s.realtime = realtime
 }
 
 func (s *AdminService) Overview(ctx context.Context) (domain.AdminOverview, error) {
@@ -151,8 +156,11 @@ func (s *AdminService) GrantInventory(ctx context.Context, userID uuid.UUID, ite
 	if _, err := s.userByID(ctx, userID); err != nil {
 		return err
 	}
-	_, err := s.inventoryStore.AddInventoryItem(ctx, userID, itemKey, quantity)
-	return err
+	if _, err := s.inventoryStore.AddInventoryItem(ctx, userID, itemKey, quantity); err != nil {
+		return err
+	}
+	notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicInventory)
+	return nil
 }
 
 func (s *AdminService) GrantXP(ctx context.Context, userID uuid.UUID, skillKey string, xp int64) (domain.PlayerSkill, error) {
@@ -166,7 +174,12 @@ func (s *AdminService) GrantXP(ctx context.Context, userID uuid.UUID, skillKey s
 	if _, err := s.userByID(ctx, userID); err != nil {
 		return domain.PlayerSkill{}, err
 	}
-	return s.skillStore.AddXP(ctx, userID, skillKey, xp)
+	skill, err := s.skillStore.AddXP(ctx, userID, skillKey, xp)
+	if err != nil {
+		return domain.PlayerSkill{}, err
+	}
+	notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicPlayer)
+	return skill, nil
 }
 
 func (s *AdminService) SetPlayerPosition(ctx context.Context, userID uuid.UUID, x int, y int) (domain.Player, error) {
@@ -207,6 +220,7 @@ func (s *AdminService) SetPlayerPosition(ctx context.Context, userID uuid.UUID, 
 	if _, err := s.playerStore.SavePlayer(ctx, player); err != nil {
 		return domain.Player{}, err
 	}
+	notifyRealtimeBestEffort(ctx, s.realtime, userID, realtimeTopicPlayer)
 
 	return s.players.Get(ctx, userID)
 }

@@ -18,6 +18,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   int _interactionSequence = 0;
   bool _inventoryOpen = false;
   String? _activeBankEntityId;
+  bool _inboxOpen = false;
   bool _loginOpen = false;
   bool _registrationOpen = false;
   bool _minimapVisible = true;
@@ -116,13 +117,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         loadingError != null ||
         _gameAssetsError != null ||
         !_gameAssetsReady ||
-        map.isLoading ||
         !map.hasValue ||
-        entities.isLoading ||
         !entities.hasValue ||
-        player.isLoading ||
         !player.hasValue ||
-        inventory.isLoading ||
         !inventory.hasValue;
 
     return Scaffold(
@@ -157,6 +154,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               GameHud(
                 inventoryOpen: _inventoryOpen,
                 bankOpen: _activeBankEntityId != null,
+                inboxOpen: _inboxOpen,
                 loginOpen: _loginOpen,
                 registrationOpen: _registrationOpen,
                 minimapVisible: _minimapVisible,
@@ -167,6 +165,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 onInventoryPressed: _toggleInventory,
                 onInventoryClosed: _toggleInventory,
                 onBankClosed: _closeBankInventory,
+                onInboxPressed: _toggleInbox,
+                onInboxClosed: _closeInbox,
                 onInventoryItemTap:
                     _activeBankEntityId == null
                         ? null
@@ -398,6 +398,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _inventoryOpen = !_inventoryOpen;
       _activeBankEntityId = null;
+      _inboxOpen = false;
     });
   }
 
@@ -411,6 +412,32 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     });
   }
 
+  void _toggleInbox() {
+    if (!mounted) {
+      return;
+    }
+    final opening = !_inboxOpen;
+    setState(() {
+      _inboxOpen = opening;
+      if (opening) {
+        _inventoryOpen = false;
+        _activeBankEntityId = null;
+      }
+    });
+    if (opening) {
+      unawaited(ref.read(eventInboxControllerProvider.notifier).ackUnread());
+    }
+  }
+
+  void _closeInbox() {
+    if (!_inboxOpen || !mounted) {
+      return;
+    }
+    setState(() {
+      _inboxOpen = false;
+    });
+  }
+
   void _openBank(String entityId) {
     if (!mounted) {
       return;
@@ -418,6 +445,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _inventoryOpen = true;
       _activeBankEntityId = entityId;
+      _inboxOpen = false;
     });
   }
 
@@ -428,6 +456,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _loginOpen = false;
       _registrationOpen = true;
+      _inboxOpen = false;
     });
   }
 
@@ -447,6 +476,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     setState(() {
       _registrationOpen = false;
       _loginOpen = true;
+      _inboxOpen = false;
     });
   }
 

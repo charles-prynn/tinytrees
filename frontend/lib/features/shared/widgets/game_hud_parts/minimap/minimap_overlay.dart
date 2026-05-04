@@ -3,13 +3,13 @@ part of '../../game_hud.dart';
 class MinimapOverlay extends ConsumerStatefulWidget {
   const MinimapOverlay({
     super.key,
+    required this.panelSize,
     required this.selectedTile,
     required this.onTileSelected,
   });
 
-  static const double _panelWidth = 156;
-  static const double _panelHeight = 156;
   static const double _mapInset = 10;
+  final double panelSize;
   final math.Point<int>? selectedTile;
   final ValueChanged<math.Point<int>> onTileSelected;
 
@@ -50,8 +50,15 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
       return const SizedBox.shrink();
     }
 
+    final mapInset =
+        widget.panelSize < 132
+            ? MinimapOverlay._mapInset - 2
+            : MinimapOverlay._mapInset;
+    final mapSize = widget.panelSize - 20 - (mapInset * 2);
+
     return SizedBox(
-      width: MinimapOverlay._panelWidth,
+      width: widget.panelSize,
+      height: widget.panelSize,
       child: RepaintBoundary(
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -69,8 +76,8 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: SizedBox(
-              width: MinimapOverlay._panelWidth - 12,
-              height: MinimapOverlay._panelHeight - 12,
+              width: widget.panelSize - 12,
+              height: widget.panelSize - 12,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: const Color(0x44221810),
@@ -104,19 +111,14 @@ class _MinimapOverlayState extends ConsumerState<MinimapOverlay> {
                       ),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(MinimapOverlay._mapInset),
+                      padding: EdgeInsets.all(mapInset),
                       child: RepaintBoundary(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTapUp: (details) {
                             final tile = _tileAtLocalPosition(
                               details.localPosition,
-                              Size.square(
-                                MinimapOverlay._panelWidth -
-                                    12 -
-                                    8 -
-                                    (MinimapOverlay._mapInset * 2),
-                              ),
+                              Size.square(mapSize),
                               map,
                               player,
                             );
@@ -274,8 +276,9 @@ class _MinimapPainter extends CustomPainter {
     viewportWidth = math.min(viewportWidth, map.width.toDouble());
     viewportHeight = math.min(viewportHeight, map.height.toDouble());
 
-    final playerCenterX = player.renderX + 0.5;
-    final playerCenterY = player.renderY + 0.5;
+    final position = player.renderPositionAt(DateTime.now().toUtc());
+    final playerCenterX = position.x + 0.5;
+    final playerCenterY = position.y + 0.5;
     final maxLeft = math.max(0.0, map.width - viewportWidth);
     final maxTop = math.max(0.0, map.height - viewportHeight);
     final left = (playerCenterX - viewportWidth / 2).clamp(0.0, maxLeft);
@@ -333,9 +336,10 @@ class _MinimapPainter extends CustomPainter {
   void _drawPlayer(Canvas canvas, Rect rect, Rect viewport) {
     final tileWidth = rect.width / viewport.width;
     final tileHeight = rect.height / viewport.height;
+    final livePosition = player.renderPositionAt(DateTime.now().toUtc());
     final position = Offset(
-      rect.left + (player.renderX + 0.5 - viewport.left) * tileWidth,
-      rect.top + (player.renderY + 0.5 - viewport.top) * tileHeight,
+      rect.left + (livePosition.x + 0.5 - viewport.left) * tileWidth,
+      rect.top + (livePosition.y + 0.5 - viewport.top) * tileHeight,
     );
 
     canvas.drawCircle(

@@ -12,6 +12,7 @@ import '../../core/realtime/game_socket.dart';
 import '../auth/data/auth_controller.dart';
 import '../bank/data/bank_repository.dart';
 import '../entities/data/entity_repository.dart';
+import '../events/application/event_inbox_controller.dart';
 import '../entities/domain/world_entity.dart';
 import '../inventory/data/inventory_repository.dart';
 import '../inventory/domain/inventory_item.dart';
